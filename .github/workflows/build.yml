@@ -143,7 +143,8 @@ jobs:
           # Disable gocv's default Windows static library linking
           export OPENCV_GO_SKIP_LINKING=1
           
-          wails build -platform windows/amd64 -tags customenv
+          # Skip bindings generation (avoid DLL loading issues during binding generation)
+          wails build -platform windows/amd64 -tags customenv -skipbindings
           mv build/bin/zoeyworker-gui.exe ../../dist/ZoeyWorker-windows-amd64.exe
 
       - name: Upload Artifacts
