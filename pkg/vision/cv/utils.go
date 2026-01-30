@@ -1,21 +1,70 @@
 package cv
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"image"
+	_ "image/png"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gocv.io/x/gocv"
+	_ "image/gif"
+	_ "image/jpeg"
 )
 
-// ReadImage 读取图像文件
+// ReadImage 读取图像文件或 base64 数据
+// 支持:
+//   - 文件路径: "path/to/image.png"
+//   - Base64 Data URL: "data:image/png;base64,iVBORw0KGgo..."
+//   - 纯 Base64 字符串 (自动检测)
 func ReadImage(filename string) (gocv.Mat, error) {
+	// 检查是否是 base64 data URL
+	if strings.HasPrefix(filename, "data:image/") {
+		return readBase64Image(filename)
+	}
+	
+	// 检查是否是纯 base64 字符串 (长度较长且不含路径分隔符)
+	if len(filename) > 100 && !strings.ContainsAny(filename, "/\\") {
+		// 尝试作为 base64 解码
+		mat, err := readBase64Image("data:image/png;base64," + filename)
+		if err == nil {
+			return mat, nil
+		}
+	}
+
+	// 作为文件路径读取
 	mat := gocv.IMRead(filename, gocv.IMReadColor)
 	if mat.Empty() {
 		return mat, fmt.Errorf("无法读取图像: %s", filename)
 	}
 	return mat, nil
+}
+
+// readBase64Image 从 base64 data URL 读取图像
+func readBase64Image(dataURL string) (gocv.Mat, error) {
+	// 解析 data URL: data:image/png;base64,xxxxx
+	parts := strings.SplitN(dataURL, ",", 2)
+	if len(parts) != 2 {
+		return gocv.Mat{}, fmt.Errorf("无效的 base64 data URL 格式")
+	}
+
+	// 解码 base64
+	imgData, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return gocv.Mat{}, fmt.Errorf("base64 解码失败: %w", err)
+	}
+
+	// 解码图像
+	img, _, err := image.Decode(bytes.NewReader(imgData))
+	if err != nil {
+		return gocv.Mat{}, fmt.Errorf("图像解码失败: %w", err)
+	}
+
+	// 转换为 gocv.Mat
+	return ImageToMat(img)
 }
 
 // ReadImageGray 读取灰度图像
