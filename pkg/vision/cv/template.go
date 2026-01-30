@@ -3,6 +3,7 @@ package cv
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gocv.io/x/gocv"
@@ -206,8 +207,14 @@ func (t *Template) tryMatch(method MatchMethod, image, screen gocv.Mat) (*MatchR
 
 // readImage 读取模板图像
 func (t *Template) readImage() (gocv.Mat, error) {
-	// 处理相对路径
 	filename := t.Filename
+	
+	// 如果是 base64 data URL，直接读取，不处理路径
+	if strings.HasPrefix(filename, "data:image/") {
+		return ReadImage(filename)
+	}
+	
+	// 处理相对路径
 	if CurrentPath != "" && !filepath.IsAbs(filename) {
 		filename = filepath.Join(CurrentPath, filename)
 	}
