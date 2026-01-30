@@ -10,8 +10,8 @@ env:
   GO_VERSION: '1.23'
 
 jobs:
-  build-macos-arm64:
-    runs-on: macos-14  # M1 runner for arm64 native build
+  build-macos:
+    runs-on: macos-latest  # arm64 (M1/M2) - works on Intel Macs via Rosetta 2
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,50 +52,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zoeyworker-darwin-arm64
-          path: dist/
-
-  build-macos-amd64:
-    runs-on: macos-13  # Intel runner for amd64 native build
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Install OpenCV
-        run: |
-          brew install opencv
-          echo "PKG_CONFIG_PATH=$(brew --prefix opencv)/lib/pkgconfig" >> $GITHUB_ENV
-          echo "CGO_CPPFLAGS=-I$(brew --prefix opencv)/include/opencv4" >> $GITHUB_ENV
-          echo "CGO_LDFLAGS=-L$(brew --prefix opencv)/lib" >> $GITHUB_ENV
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-      - name: Build CLI
-        run: |
-          mkdir -p dist
-          CGO_ENABLED=1 go build -ldflags "-s -w" -o dist/zoeyworker-darwin-amd64 ./cmd/zoeyworker
-
-      - name: Build GUI
-        working-directory: cmd/zoeyworker-gui
-        run: |
-          wails build -platform darwin/amd64
-          cp -r build/bin/zoeyworker-gui.app ../../dist/ZoeyWorker-darwin-amd64.zip
-
-      - name: Zip App Bundle
-        run: |
-          cd dist
-          zip -r ZoeyWorker-darwin-amd64.zip ZoeyWorker-darwin-amd64.app
-          rm -rf ZoeyWorker-darwin-amd64.app
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: zoeyworker-darwin-amd64
           path: dist/
 
   build-windows:
@@ -154,7 +110,7 @@ jobs:
           path: dist/
 
   release:
-    needs: [build-macos-arm64, build-macos-amd64, build-windows]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
