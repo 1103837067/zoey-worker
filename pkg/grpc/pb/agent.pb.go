@@ -1196,14 +1196,24 @@ func (x *TaskProgress) GetStatus() string {
 	return ""
 }
 
+// 任务结果
+// status 枚举: SUCCESS, FAILED, CANCELLED, TIMEOUT, SKIPPED
+// failure_reason 枚举 (当 status=FAILED 时):
+//   - NOT_FOUND: 图像/文字/元素未找到
+//   - MULTIPLE_MATCHES: 匹配到多个目标
+//   - ASSERTION_FAILED: 断言失败
+//   - PARAM_ERROR: 参数错误
+//   - SYSTEM_ERROR: 系统错误（权限、IO 等）
 type TaskResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"` // SUCCESS, FAILED, CANCELLED, TIMEOUT
-	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                           // SUCCESS, FAILED, CANCELLED, TIMEOUT, SKIPPED
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`                         // 人类可读的消息
 	ResultJson    string                 `protobuf:"bytes,5,opt,name=result_json,json=resultJson,proto3" json:"result_json,omitempty"` // JSON 格式的结果数据
 	DurationMs    int64                  `protobuf:"varint,6,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	FailureReason string                 `protobuf:"bytes,7,opt,name=failure_reason,json=failureReason,proto3" json:"failure_reason,omitempty"` // 失败原因码（status=FAILED 时）
+	MatchLocation *MatchLocation         `protobuf:"bytes,8,opt,name=match_location,json=matchLocation,proto3" json:"match_location,omitempty"` // 匹配位置（定位成功时）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1280,6 +1290,97 @@ func (x *TaskResult) GetDurationMs() int64 {
 	return 0
 }
 
+func (x *TaskResult) GetFailureReason() string {
+	if x != nil {
+		return x.FailureReason
+	}
+	return ""
+}
+
+func (x *TaskResult) GetMatchLocation() *MatchLocation {
+	if x != nil {
+		return x.MatchLocation
+	}
+	return nil
+}
+
+// 匹配位置信息
+type MatchLocation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	X             int32                  `protobuf:"varint,1,opt,name=x,proto3" json:"x,omitempty"`
+	Y             int32                  `protobuf:"varint,2,opt,name=y,proto3" json:"y,omitempty"`
+	Width         int32                  `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
+	Height        int32                  `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
+	Confidence    float32                `protobuf:"fixed32,5,opt,name=confidence,proto3" json:"confidence,omitempty"` // 匹配置信度
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MatchLocation) Reset() {
+	*x = MatchLocation{}
+	mi := &file_agent_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MatchLocation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MatchLocation) ProtoMessage() {}
+
+func (x *MatchLocation) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MatchLocation.ProtoReflect.Descriptor instead.
+func (*MatchLocation) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *MatchLocation) GetX() int32 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *MatchLocation) GetY() int32 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+func (x *MatchLocation) GetWidth() int32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *MatchLocation) GetHeight() int32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *MatchLocation) GetConfidence() float32 {
+	if x != nil {
+		return x.Confidence
+	}
+	return 0
+}
+
 type PongResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ClientTimestamp int64                  `protobuf:"varint,1,opt,name=client_timestamp,json=clientTimestamp,proto3" json:"client_timestamp,omitempty"`
@@ -1290,7 +1391,7 @@ type PongResponse struct {
 
 func (x *PongResponse) Reset() {
 	*x = PongResponse{}
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1302,7 +1403,7 @@ func (x *PongResponse) String() string {
 func (*PongResponse) ProtoMessage() {}
 
 func (x *PongResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1315,7 +1416,7 @@ func (x *PongResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PongResponse.ProtoReflect.Descriptor instead.
 func (*PongResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{17}
+	return file_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PongResponse) GetClientTimestamp() int64 {
@@ -1341,7 +1442,7 @@ type GetApplicationsRequest struct {
 
 func (x *GetApplicationsRequest) Reset() {
 	*x = GetApplicationsRequest{}
-	mi := &file_agent_proto_msgTypes[18]
+	mi := &file_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1353,7 +1454,7 @@ func (x *GetApplicationsRequest) String() string {
 func (*GetApplicationsRequest) ProtoMessage() {}
 
 func (x *GetApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[18]
+	mi := &file_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1366,7 +1467,7 @@ func (x *GetApplicationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*GetApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{18}
+	return file_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetApplicationsRequest) GetAgentId() string {
@@ -1387,7 +1488,7 @@ type GetApplicationsResponse struct {
 
 func (x *GetApplicationsResponse) Reset() {
 	*x = GetApplicationsResponse{}
-	mi := &file_agent_proto_msgTypes[19]
+	mi := &file_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1399,7 +1500,7 @@ func (x *GetApplicationsResponse) String() string {
 func (*GetApplicationsResponse) ProtoMessage() {}
 
 func (x *GetApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[19]
+	mi := &file_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1412,7 +1513,7 @@ func (x *GetApplicationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetApplicationsResponse.ProtoReflect.Descriptor instead.
 func (*GetApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{19}
+	return file_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetApplicationsResponse) GetSuccess() bool {
@@ -1448,7 +1549,7 @@ type ApplicationInfo struct {
 
 func (x *ApplicationInfo) Reset() {
 	*x = ApplicationInfo{}
-	mi := &file_agent_proto_msgTypes[20]
+	mi := &file_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1460,7 +1561,7 @@ func (x *ApplicationInfo) String() string {
 func (*ApplicationInfo) ProtoMessage() {}
 
 func (x *ApplicationInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[20]
+	mi := &file_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1473,7 +1574,7 @@ func (x *ApplicationInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplicationInfo.ProtoReflect.Descriptor instead.
 func (*ApplicationInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{20}
+	return file_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ApplicationInfo) GetPid() int32 {
@@ -1515,7 +1616,7 @@ type GetWindowsRequest struct {
 
 func (x *GetWindowsRequest) Reset() {
 	*x = GetWindowsRequest{}
-	mi := &file_agent_proto_msgTypes[21]
+	mi := &file_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1527,7 +1628,7 @@ func (x *GetWindowsRequest) String() string {
 func (*GetWindowsRequest) ProtoMessage() {}
 
 func (x *GetWindowsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[21]
+	mi := &file_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1540,7 +1641,7 @@ func (x *GetWindowsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWindowsRequest.ProtoReflect.Descriptor instead.
 func (*GetWindowsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{21}
+	return file_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetWindowsRequest) GetAgentId() string {
@@ -1575,7 +1676,7 @@ type GetWindowsResponse struct {
 
 func (x *GetWindowsResponse) Reset() {
 	*x = GetWindowsResponse{}
-	mi := &file_agent_proto_msgTypes[22]
+	mi := &file_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1587,7 +1688,7 @@ func (x *GetWindowsResponse) String() string {
 func (*GetWindowsResponse) ProtoMessage() {}
 
 func (x *GetWindowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[22]
+	mi := &file_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1600,7 +1701,7 @@ func (x *GetWindowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWindowsResponse.ProtoReflect.Descriptor instead.
 func (*GetWindowsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{22}
+	return file_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetWindowsResponse) GetSuccess() bool {
@@ -1638,7 +1739,7 @@ type WindowInfo struct {
 
 func (x *WindowInfo) Reset() {
 	*x = WindowInfo{}
-	mi := &file_agent_proto_msgTypes[23]
+	mi := &file_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1650,7 +1751,7 @@ func (x *WindowInfo) String() string {
 func (*WindowInfo) ProtoMessage() {}
 
 func (x *WindowInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[23]
+	mi := &file_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1663,7 +1764,7 @@ func (x *WindowInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WindowInfo.ProtoReflect.Descriptor instead.
 func (*WindowInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{23}
+	return file_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *WindowInfo) GetHandle() int64 {
@@ -1720,7 +1821,7 @@ type RectInfo struct {
 
 func (x *RectInfo) Reset() {
 	*x = RectInfo{}
-	mi := &file_agent_proto_msgTypes[24]
+	mi := &file_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1732,7 +1833,7 @@ func (x *RectInfo) String() string {
 func (*RectInfo) ProtoMessage() {}
 
 func (x *RectInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[24]
+	mi := &file_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1745,7 +1846,7 @@ func (x *RectInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RectInfo.ProtoReflect.Descriptor instead.
 func (*RectInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{24}
+	return file_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RectInfo) GetX() int32 {
@@ -1788,7 +1889,7 @@ type GetElementsRequest struct {
 
 func (x *GetElementsRequest) Reset() {
 	*x = GetElementsRequest{}
-	mi := &file_agent_proto_msgTypes[25]
+	mi := &file_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1800,7 +1901,7 @@ func (x *GetElementsRequest) String() string {
 func (*GetElementsRequest) ProtoMessage() {}
 
 func (x *GetElementsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[25]
+	mi := &file_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1813,7 +1914,7 @@ func (x *GetElementsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetElementsRequest.ProtoReflect.Descriptor instead.
 func (*GetElementsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{25}
+	return file_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetElementsRequest) GetAgentId() string {
@@ -1855,7 +1956,7 @@ type GetElementsResponse struct {
 
 func (x *GetElementsResponse) Reset() {
 	*x = GetElementsResponse{}
-	mi := &file_agent_proto_msgTypes[26]
+	mi := &file_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1867,7 +1968,7 @@ func (x *GetElementsResponse) String() string {
 func (*GetElementsResponse) ProtoMessage() {}
 
 func (x *GetElementsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[26]
+	mi := &file_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1880,7 +1981,7 @@ func (x *GetElementsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetElementsResponse.ProtoReflect.Descriptor instead.
 func (*GetElementsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{26}
+	return file_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetElementsResponse) GetSuccess() bool {
@@ -1920,7 +2021,7 @@ type ElementInfo struct {
 
 func (x *ElementInfo) Reset() {
 	*x = ElementInfo{}
-	mi := &file_agent_proto_msgTypes[27]
+	mi := &file_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1932,7 +2033,7 @@ func (x *ElementInfo) String() string {
 func (*ElementInfo) ProtoMessage() {}
 
 func (x *ElementInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[27]
+	mi := &file_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1945,7 +2046,7 @@ func (x *ElementInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ElementInfo.ProtoReflect.Descriptor instead.
 func (*ElementInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{27}
+	return file_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ElementInfo) GetAutomationId() string {
@@ -2104,7 +2205,7 @@ const file_agent_proto_rawDesc = "" +
 	"\fpassed_steps\x18\x04 \x01(\x05R\vpassedSteps\x12!\n" +
 	"\ffailed_steps\x18\x05 \x01(\x05R\vfailedSteps\x12*\n" +
 	"\x11current_step_name\x18\x06 \x01(\tR\x0fcurrentStepName\x12\x16\n" +
-	"\x06status\x18\a \x01(\tR\x06status\"\xb3\x01\n" +
+	"\x06status\x18\a \x01(\tR\x06status\"\x9c\x02\n" +
 	"\n" +
 	"TaskResult\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x18\n" +
@@ -2114,7 +2215,17 @@ const file_agent_proto_rawDesc = "" +
 	"\vresult_json\x18\x05 \x01(\tR\n" +
 	"resultJson\x12\x1f\n" +
 	"\vduration_ms\x18\x06 \x01(\x03R\n" +
-	"durationMs\"d\n" +
+	"durationMs\x12%\n" +
+	"\x0efailure_reason\x18\a \x01(\tR\rfailureReason\x12@\n" +
+	"\x0ematch_location\x18\b \x01(\v2\x19.zoey.agent.MatchLocationR\rmatchLocation\"y\n" +
+	"\rMatchLocation\x12\f\n" +
+	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
+	"\x01y\x18\x02 \x01(\x05R\x01y\x12\x14\n" +
+	"\x05width\x18\x03 \x01(\x05R\x05width\x12\x16\n" +
+	"\x06height\x18\x04 \x01(\x05R\x06height\x12\x1e\n" +
+	"\n" +
+	"confidence\x18\x05 \x01(\x02R\n" +
+	"confidence\"d\n" +
 	"\fPongResponse\x12)\n" +
 	"\x10client_timestamp\x18\x01 \x01(\x03R\x0fclientTimestamp\x12)\n" +
 	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\"3\n" +
@@ -2195,7 +2306,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_agent_proto_goTypes = []any{
 	(*ConnectRequest)(nil),          // 0: zoey.agent.ConnectRequest
 	(*ConnectResponse)(nil),         // 1: zoey.agent.ConnectResponse
@@ -2214,17 +2325,18 @@ var file_agent_proto_goTypes = []any{
 	(*TaskAck)(nil),                 // 14: zoey.agent.TaskAck
 	(*TaskProgress)(nil),            // 15: zoey.agent.TaskProgress
 	(*TaskResult)(nil),              // 16: zoey.agent.TaskResult
-	(*PongResponse)(nil),            // 17: zoey.agent.PongResponse
-	(*GetApplicationsRequest)(nil),  // 18: zoey.agent.GetApplicationsRequest
-	(*GetApplicationsResponse)(nil), // 19: zoey.agent.GetApplicationsResponse
-	(*ApplicationInfo)(nil),         // 20: zoey.agent.ApplicationInfo
-	(*GetWindowsRequest)(nil),       // 21: zoey.agent.GetWindowsRequest
-	(*GetWindowsResponse)(nil),      // 22: zoey.agent.GetWindowsResponse
-	(*WindowInfo)(nil),              // 23: zoey.agent.WindowInfo
-	(*RectInfo)(nil),                // 24: zoey.agent.RectInfo
-	(*GetElementsRequest)(nil),      // 25: zoey.agent.GetElementsRequest
-	(*GetElementsResponse)(nil),     // 26: zoey.agent.GetElementsResponse
-	(*ElementInfo)(nil),             // 27: zoey.agent.ElementInfo
+	(*MatchLocation)(nil),           // 17: zoey.agent.MatchLocation
+	(*PongResponse)(nil),            // 18: zoey.agent.PongResponse
+	(*GetApplicationsRequest)(nil),  // 19: zoey.agent.GetApplicationsRequest
+	(*GetApplicationsResponse)(nil), // 20: zoey.agent.GetApplicationsResponse
+	(*ApplicationInfo)(nil),         // 21: zoey.agent.ApplicationInfo
+	(*GetWindowsRequest)(nil),       // 22: zoey.agent.GetWindowsRequest
+	(*GetWindowsResponse)(nil),      // 23: zoey.agent.GetWindowsResponse
+	(*WindowInfo)(nil),              // 24: zoey.agent.WindowInfo
+	(*RectInfo)(nil),                // 25: zoey.agent.RectInfo
+	(*GetElementsRequest)(nil),      // 26: zoey.agent.GetElementsRequest
+	(*GetElementsResponse)(nil),     // 27: zoey.agent.GetElementsResponse
+	(*ElementInfo)(nil),             // 28: zoey.agent.ElementInfo
 }
 var file_agent_proto_depIdxs = []int32{
 	2,  // 0: zoey.agent.ConnectRequest.system_info:type_name -> zoey.agent.SystemInfo
@@ -2237,30 +2349,31 @@ var file_agent_proto_depIdxs = []int32{
 	14, // 7: zoey.agent.WorkerMessage.task_ack:type_name -> zoey.agent.TaskAck
 	15, // 8: zoey.agent.WorkerMessage.task_progress:type_name -> zoey.agent.TaskProgress
 	16, // 9: zoey.agent.WorkerMessage.task_result:type_name -> zoey.agent.TaskResult
-	17, // 10: zoey.agent.WorkerMessage.pong:type_name -> zoey.agent.PongResponse
+	18, // 10: zoey.agent.WorkerMessage.pong:type_name -> zoey.agent.PongResponse
 	10, // 11: zoey.agent.WorkerMessage.data_response:type_name -> zoey.agent.DataResponse
-	20, // 12: zoey.agent.GetApplicationsResponse.applications:type_name -> zoey.agent.ApplicationInfo
-	23, // 13: zoey.agent.GetWindowsResponse.windows:type_name -> zoey.agent.WindowInfo
-	24, // 14: zoey.agent.WindowInfo.rect:type_name -> zoey.agent.RectInfo
-	27, // 15: zoey.agent.GetElementsResponse.elements:type_name -> zoey.agent.ElementInfo
-	24, // 16: zoey.agent.ElementInfo.rect:type_name -> zoey.agent.RectInfo
-	0,  // 17: zoey.agent.AgentService.Connect:input_type -> zoey.agent.ConnectRequest
-	3,  // 18: zoey.agent.AgentService.Heartbeat:input_type -> zoey.agent.HeartbeatRequest
-	8,  // 19: zoey.agent.AgentService.TaskStream:input_type -> zoey.agent.WorkerMessage
-	18, // 20: zoey.agent.AgentService.GetApplications:input_type -> zoey.agent.GetApplicationsRequest
-	21, // 21: zoey.agent.AgentService.GetWindows:input_type -> zoey.agent.GetWindowsRequest
-	25, // 22: zoey.agent.AgentService.GetElements:input_type -> zoey.agent.GetElementsRequest
-	1,  // 23: zoey.agent.AgentService.Connect:output_type -> zoey.agent.ConnectResponse
-	4,  // 24: zoey.agent.AgentService.Heartbeat:output_type -> zoey.agent.HeartbeatResponse
-	7,  // 25: zoey.agent.AgentService.TaskStream:output_type -> zoey.agent.ServerMessage
-	19, // 26: zoey.agent.AgentService.GetApplications:output_type -> zoey.agent.GetApplicationsResponse
-	22, // 27: zoey.agent.AgentService.GetWindows:output_type -> zoey.agent.GetWindowsResponse
-	26, // 28: zoey.agent.AgentService.GetElements:output_type -> zoey.agent.GetElementsResponse
-	23, // [23:29] is the sub-list for method output_type
-	17, // [17:23] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	17, // 12: zoey.agent.TaskResult.match_location:type_name -> zoey.agent.MatchLocation
+	21, // 13: zoey.agent.GetApplicationsResponse.applications:type_name -> zoey.agent.ApplicationInfo
+	24, // 14: zoey.agent.GetWindowsResponse.windows:type_name -> zoey.agent.WindowInfo
+	25, // 15: zoey.agent.WindowInfo.rect:type_name -> zoey.agent.RectInfo
+	28, // 16: zoey.agent.GetElementsResponse.elements:type_name -> zoey.agent.ElementInfo
+	25, // 17: zoey.agent.ElementInfo.rect:type_name -> zoey.agent.RectInfo
+	0,  // 18: zoey.agent.AgentService.Connect:input_type -> zoey.agent.ConnectRequest
+	3,  // 19: zoey.agent.AgentService.Heartbeat:input_type -> zoey.agent.HeartbeatRequest
+	8,  // 20: zoey.agent.AgentService.TaskStream:input_type -> zoey.agent.WorkerMessage
+	19, // 21: zoey.agent.AgentService.GetApplications:input_type -> zoey.agent.GetApplicationsRequest
+	22, // 22: zoey.agent.AgentService.GetWindows:input_type -> zoey.agent.GetWindowsRequest
+	26, // 23: zoey.agent.AgentService.GetElements:input_type -> zoey.agent.GetElementsRequest
+	1,  // 24: zoey.agent.AgentService.Connect:output_type -> zoey.agent.ConnectResponse
+	4,  // 25: zoey.agent.AgentService.Heartbeat:output_type -> zoey.agent.HeartbeatResponse
+	7,  // 26: zoey.agent.AgentService.TaskStream:output_type -> zoey.agent.ServerMessage
+	20, // 27: zoey.agent.AgentService.GetApplications:output_type -> zoey.agent.GetApplicationsResponse
+	23, // 28: zoey.agent.AgentService.GetWindows:output_type -> zoey.agent.GetWindowsResponse
+	27, // 29: zoey.agent.AgentService.GetElements:output_type -> zoey.agent.GetElementsResponse
+	24, // [24:30] is the sub-list for method output_type
+	18, // [18:24] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -2287,7 +2400,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
