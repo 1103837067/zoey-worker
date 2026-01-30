@@ -5,6 +5,8 @@ bin/
 *.dll
 *.so
 *.dylib
+zoeyworker
+zoeyworker-gui
 
 # Test binary
 *.test
@@ -27,14 +29,20 @@ Thumbs.db
 
 # Build
 dist/
+build/bin/
 
 # Models (downloaded separately)
 models/
 
 # Logs
 *.log
-test/output/
+
+# Test output (generated files)
+**/testdata/output/
 
 # Coverage
 coverage.txt
 coverage.html
+
+# Wails dev
+frontend/dist/
