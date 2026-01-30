@@ -150,33 +150,67 @@ jobs:
       - name: Copy OpenCV DLLs
         shell: msys2 {0}
         run: |
-          mkdir -p dist/dll
-          # Copy OpenCV DLLs
-          cp /mingw64/bin/libopencv_*.dll dist/dll/
+          # Copy OpenCV DLLs directly to dist (same folder as exe)
+          cp /mingw64/bin/libopencv_*.dll dist/
           # Copy MinGW runtime DLLs
-          cp /mingw64/bin/libgcc_s_seh-1.dll dist/dll/
-          cp /mingw64/bin/libstdc++-6.dll dist/dll/
-          cp /mingw64/bin/libwinpthread-1.dll dist/dll/
+          cp /mingw64/bin/libgcc_s_seh-1.dll dist/
+          cp /mingw64/bin/libstdc++-6.dll dist/
+          cp /mingw64/bin/libwinpthread-1.dll dist/
           # Copy other required DLLs
-          cp /mingw64/bin/libpng16-16.dll dist/dll/ 2>/dev/null || true
-          cp /mingw64/bin/libjpeg-8.dll dist/dll/ 2>/dev/null || true
-          cp /mingw64/bin/libtiff-6.dll dist/dll/ 2>/dev/null || true
-          cp /mingw64/bin/libwebp-7.dll dist/dll/ 2>/dev/null || true
-          cp /mingw64/bin/zlib1.dll dist/dll/ 2>/dev/null || true
-          cp /mingw64/bin/libgomp-1.dll dist/dll/ 2>/dev/null || true
+          cp /mingw64/bin/libpng16-16.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libjpeg-8.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libtiff-6.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libwebp-7.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/zlib1.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libgomp-1.dll dist/ 2>/dev/null || true
+          # Copy additional dependencies that OpenCV might need
+          cp /mingw64/bin/libopenjp2-7.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/liblzma-5.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libzstd.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libLerc.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libdeflate.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libjbig-0.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libsharpyuv-0.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libfreetype-6.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libharfbuzz-0.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libbz2-1.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libbrotlidec.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libbrotlicommon.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libglib-2.0-0.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libgraphite2.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libintl-8.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libiconv-2.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libpcre2-8-0.dll dist/ 2>/dev/null || true
           
           echo "Copied DLLs:"
-          ls -la dist/dll/
+          ls -la dist/*.dll | wc -l
+          echo "files copied"
 
       - name: Package Windows distribution
         shell: pwsh
         run: |
-          # Create a zip with exe and DLLs together
-          Compress-Archive -Path dist/ZoeyWorker-windows-amd64.exe, dist/zoeyworker-windows-amd64.exe, dist/dll/* -DestinationPath dist/ZoeyWorker-windows-amd64.zip -Force
-          # Clean up individual files, keep only the zip
-          Remove-Item dist/ZoeyWorker-windows-amd64.exe -ErrorAction SilentlyContinue
-          Remove-Item dist/zoeyworker-windows-amd64.exe -ErrorAction SilentlyContinue
-          Remove-Item dist/dll -Recurse -ErrorAction SilentlyContinue
+          # Create a directory structure for the zip
+          New-Item -ItemType Directory -Path dist/ZoeyWorker-windows -Force
+          # Move all files to the directory
+          Move-Item dist/*.exe dist/ZoeyWorker-windows/
+          Move-Item dist/*.dll dist/ZoeyWorker-windows/
+          # Create README
+          @"
+ZoeyWorker for Windows
+======================
+
+Usage:
+1. Run ZoeyWorker.exe (GUI version)
+   or
+2. Run zoeyworker-windows-amd64.exe (CLI version)
+
+All DLL files must be in the same directory as the exe files.
+"@ | Out-File -FilePath dist/ZoeyWorker-windows/README.txt -Encoding UTF8
+          
+          # Create zip
+          Compress-Archive -Path dist/ZoeyWorker-windows -DestinationPath dist/ZoeyWorker-windows-amd64.zip -Force
+          # Clean up
+          Remove-Item dist/ZoeyWorker-windows -Recurse
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
