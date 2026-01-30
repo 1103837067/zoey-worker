@@ -503,17 +503,37 @@ func (e *Executor) executeMouseClick(payload map[string]interface{}) (interface{
 
 // executeActivateApp 执行激活应用
 func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface{}, error) {
-	appName, ok := payload["app_name"].(string)
-	if !ok || appName == "" {
-		return nil, fmt.Errorf("缺少 app_name 参数")
+	appName, _ := payload["app_name"].(string)
+	windowTitle, _ := payload["window_title"].(string)
+
+	// 如果同时有应用名和窗口标题，使用精确匹配
+	if appName != "" && windowTitle != "" {
+		err := auto.ActivateWindowByTitle(appName, windowTitle)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]bool{"activated": true}, nil
 	}
 
-	err := auto.ActivateWindow(appName)
-	if err != nil {
-		return nil, err
+	// 只有应用名，直接激活应用
+	if appName != "" {
+		err := auto.ActivateWindow(appName)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]bool{"activated": true}, nil
 	}
 
-	return map[string]bool{"activated": true}, nil
+	// 只有窗口标题，尝试通过标题查找并激活
+	if windowTitle != "" {
+		err := auto.ActivateWindow(windowTitle)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]bool{"activated": true}, nil
+	}
+
+	return nil, fmt.Errorf("缺少 app_name 或 window_title 参数")
 }
 
 // executeGridClick 执行网格点击
