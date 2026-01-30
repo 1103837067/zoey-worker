@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,98 @@ const (
 	TaskTypeGetClipboard  = "get_clipboard"
 	TaskTypeSetClipboard  = "set_clipboard"
 )
+
+// ErrorType 错误类型
+type ErrorType string
+
+const (
+	ErrorTypeNone           ErrorType = ""
+	ErrorTypeInvalidParam   ErrorType = "INVALID_PARAM"   // 参数错误
+	ErrorTypeTimeout        ErrorType = "TIMEOUT"         // 超时
+	ErrorTypeNotFound       ErrorType = "NOT_FOUND"       // 未找到目标
+	ErrorTypePermission     ErrorType = "PERMISSION"      // 权限不足
+	ErrorTypeIO             ErrorType = "IO_ERROR"        // IO 错误
+	ErrorTypeImageMatch     ErrorType = "IMAGE_MATCH"     // 图像匹配错误
+	ErrorTypeOCR            ErrorType = "OCR_ERROR"       // OCR 识别错误
+	ErrorTypeSystem         ErrorType = "SYSTEM_ERROR"    // 系统错误
+	ErrorTypeUnsupported    ErrorType = "UNSUPPORTED"     // 不支持的操作
+	ErrorTypeAssertion      ErrorType = "ASSERTION"       // 断言失败
+	ErrorTypeCancelled      ErrorType = "CANCELLED"       // 任务取消
+	ErrorTypeUnknown        ErrorType = "UNKNOWN"         // 未知错误
+)
+
+// TaskError 任务错误
+type TaskError struct {
+	Type    ErrorType
+	Message string
+	Detail  string
+}
+
+func (e *TaskError) Error() string {
+	if e.Detail != "" {
+		return fmt.Sprintf("[%s] %s: %s", e.Type, e.Message, e.Detail)
+	}
+	return fmt.Sprintf("[%s] %s", e.Type, e.Message)
+}
+
+// newTaskError 创建任务错误
+func newTaskError(errType ErrorType, message string, detail string) *TaskError {
+	return &TaskError{Type: errType, Message: message, Detail: detail}
+}
+
+// classifyError 对错误进行分类
+func classifyError(err error) *TaskError {
+	if err == nil {
+		return nil
+	}
+	
+	errStr := err.Error()
+	errLower := strings.ToLower(errStr)
+	
+	// 根据错误信息分类
+	switch {
+	case strings.Contains(errLower, "timeout") || strings.Contains(errLower, "超时"):
+		return newTaskError(ErrorTypeTimeout, "操作超时", errStr)
+	case strings.Contains(errLower, "not found") || strings.Contains(errLower, "未找到") || strings.Contains(errLower, "找不到"):
+		return newTaskError(ErrorTypeNotFound, "目标未找到", errStr)
+	case strings.Contains(errLower, "permission") || strings.Contains(errLower, "权限"):
+		return newTaskError(ErrorTypePermission, "权限不足", errStr)
+	case strings.Contains(errLower, "无法读取图像") || strings.Contains(errLower, "image") && strings.Contains(errLower, "read"):
+		return newTaskError(ErrorTypeIO, "图像读取失败", errStr)
+	case strings.Contains(errLower, "匹配失败") || strings.Contains(errLower, "match"):
+		return newTaskError(ErrorTypeImageMatch, "图像匹配失败", errStr)
+	case strings.Contains(errLower, "ocr") || strings.Contains(errLower, "识别"):
+		return newTaskError(ErrorTypeOCR, "OCR 识别失败", errStr)
+	case strings.Contains(errLower, "断言") || strings.Contains(errLower, "assert"):
+		return newTaskError(ErrorTypeAssertion, "断言失败", errStr)
+	case strings.Contains(errLower, "unsupported") || strings.Contains(errLower, "不支持"):
+		return newTaskError(ErrorTypeUnsupported, "不支持的操作", errStr)
+	case strings.Contains(errLower, "参数") || strings.Contains(errLower, "param") || strings.Contains(errLower, "缺少"):
+		return newTaskError(ErrorTypeInvalidParam, "参数错误", errStr)
+	default:
+		return newTaskError(ErrorTypeUnknown, "执行失败", errStr)
+	}
+}
+
+// LogFunc 日志函数类型
+type LogFunc func(level, message string)
+
+// 全局日志函数
+var globalLogFunc LogFunc
+
+// SetLogFunc 设置日志函数
+func SetLogFunc(fn LogFunc) {
+	globalLogFunc = fn
+}
+
+// log 输出日志
+func log(level, message string) {
+	if globalLogFunc != nil {
+		globalLogFunc(level, message)
+	} else {
+		fmt.Printf("[%s] %s\n", level, message)
+	}
+}
 
 // TaskInfo 任务信息
 type TaskInfo struct {
@@ -122,10 +215,18 @@ func (e *Executor) GetStatus() (status string, currentTaskID string, currentTask
 // Execute 执行任务
 func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	startTime := time.Now()
+	
+	// 日志：任务开始
+	log("INFO", fmt.Sprintf("[Task:%s] 开始执行 type=%s", taskID, taskType))
+	log("DEBUG", fmt.Sprintf("[Task:%s] payload=%s", taskID, truncateString(payloadJSON, 500)))
 
 	// 注册任务，获取取消通道
 	cancelCh := e.registerTask(taskID, taskType)
-	defer e.unregisterTask(taskID)
+	defer func() {
+		e.unregisterTask(taskID)
+		duration := time.Since(startTime)
+		log("INFO", fmt.Sprintf("[Task:%s] 执行完成 duration=%v", taskID, duration))
+	}()
 
 	// 发送任务确认
 	e.sendTaskAck(taskID, true, "任务已接收")
@@ -133,7 +234,8 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	// 检查是否已被取消
 	select {
 	case <-cancelCh:
-		e.sendTaskResult(taskID, false, "CANCELLED", "任务在开始前被取消", "{}", startTime)
+		log("WARN", fmt.Sprintf("[Task:%s] 任务在开始前被取消", taskID))
+		e.sendTaskResultWithError(taskID, newTaskError(ErrorTypeCancelled, "任务在开始前被取消", ""), "{}", startTime)
 		return
 	default:
 	}
@@ -141,7 +243,9 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	// 解析 payload
 	var payload map[string]interface{}
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-		e.sendTaskResult(taskID, false, "FAILED", fmt.Sprintf("解析 payload 失败: %v", err), "{}", startTime)
+		taskErr := newTaskError(ErrorTypeInvalidParam, "解析 payload 失败", err.Error())
+		log("ERROR", fmt.Sprintf("[Task:%s] %s", taskID, taskErr.Error()))
+		e.sendTaskResultWithError(taskID, taskErr, "{}", startTime)
 		return
 	}
 
@@ -196,11 +300,23 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 
 	// 发送结果
 	if err != nil {
-		e.sendTaskResult(taskID, false, "FAILED", err.Error(), "{}", startTime)
+		taskErr := classifyError(err)
+		log("ERROR", fmt.Sprintf("[Task:%s] 执行失败 error_type=%s error=%s", taskID, taskErr.Type, taskErr.Message))
+		log("DEBUG", fmt.Sprintf("[Task:%s] 详细错误: %s", taskID, taskErr.Detail))
+		e.sendTaskResultWithError(taskID, taskErr, "{}", startTime)
 	} else {
 		resultJSON, _ := json.Marshal(result)
+		log("INFO", fmt.Sprintf("[Task:%s] 执行成功 result=%s", taskID, truncateString(string(resultJSON), 200)))
 		e.sendTaskResult(taskID, true, "SUCCESS", "", string(resultJSON), startTime)
 	}
+}
+
+// truncateString 截断字符串
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // executeClickImage 执行点击图像
@@ -644,6 +760,40 @@ func (e *Executor) sendTaskResult(taskID string, success bool, status, message, 
 				Status:     status,
 				Message:    message,
 				ResultJson: resultJSON,
+				DurationMs: durationMs,
+			},
+		},
+	}
+
+	e.client.SendTaskMessage(msg)
+}
+
+// sendTaskResultWithError 发送带错误类型的任务结果
+func (e *Executor) sendTaskResultWithError(taskID string, taskErr *TaskError, resultJSON string, startTime time.Time) {
+	if e.client == nil {
+		return
+	}
+
+	durationMs := time.Since(startTime).Milliseconds()
+	
+	// 构建包含错误类型的结果 JSON
+	errorResult := map[string]interface{}{
+		"error_type": string(taskErr.Type),
+		"message":    taskErr.Message,
+		"detail":     taskErr.Detail,
+	}
+	errorJSON, _ := json.Marshal(errorResult)
+
+	msg := &pb.WorkerMessage{
+		MessageId: fmt.Sprintf("result_%d", time.Now().UnixMilli()),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: &pb.WorkerMessage_TaskResult{
+			TaskResult: &pb.TaskResult{
+				TaskId:     taskID,
+				Success:    false,
+				Status:     string(taskErr.Type), // 使用错误类型作为状态
+				Message:    taskErr.Error(),
+				ResultJson: string(errorJSON),
 				DurationMs: durationMs,
 			},
 		},

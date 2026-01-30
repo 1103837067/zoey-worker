@@ -107,9 +107,13 @@ func main() {
 	// 创建任务执行器
 	exec := executor.NewExecutor(client)
 
+	// 设置 executor 日志函数
+	executor.SetLogFunc(func(level, message string) {
+		client.Log(level, message)
+	})
+
 	// 设置任务回调
 	client.SetTaskCallback(func(taskID, taskType, payloadJSON string) {
-		fmt.Printf("[TASK] 收到任务: ID=%s, Type=%s\n", taskID, taskType)
 		go exec.Execute(taskID, taskType, payloadJSON)
 	})
 

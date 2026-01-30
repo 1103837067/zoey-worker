@@ -33,6 +33,16 @@ func (a *App) startup(ctx context.Context) {
 	a.grpcClient = grpc.NewClient(nil)
 	a.executor = executor.NewExecutor(a.grpcClient)
 
+	// 设置 executor 日志函数，将日志路由到 grpcClient
+	executor.SetLogFunc(func(level, message string) {
+		if a.grpcClient != nil {
+			// 通过 grpcClient 的日志系统输出，这样 GUI 可以看到
+			a.grpcClient.Log(level, message)
+		} else {
+			fmt.Printf("[%s] %s\n", level, message)
+		}
+	})
+
 	// 设置任务回调
 	a.grpcClient.SetTaskCallback(func(taskID, taskType, payloadJSON string) {
 		go a.executor.Execute(taskID, taskType, payloadJSON)

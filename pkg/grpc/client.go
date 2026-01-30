@@ -389,7 +389,12 @@ func (c *Client) setStatus(status ClientStatus) {
 	}
 }
 
-// log 记录日志
+// Log 记录日志（公开方法）
+func (c *Client) Log(level, message string) {
+	c.log(level, message)
+}
+
+// log 记录日志（内部方法）
 func (c *Client) log(level, message string) {
 	entry := LogEntry{
 		Timestamp: time.Now().Format("2006-01-02 15:04:05"),
