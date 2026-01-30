@@ -7,14 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.23'
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
+  build-macos-arm64:
+    runs-on: macos-14  # M1 runner for arm64 native build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +22,11 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Install OpenCV
-        run: brew install opencv
+        run: |
+          brew install opencv
+          echo "PKG_CONFIG_PATH=$(brew --prefix opencv)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "CGO_CPPFLAGS=-I$(brew --prefix opencv)/include/opencv4" >> $GITHUB_ENV
+          echo "CGO_LDFLAGS=-L$(brew --prefix opencv)/lib" >> $GITHUB_ENV
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -33,22 +34,75 @@ jobs:
       - name: Build CLI
         run: |
           mkdir -p dist
-          GOARCH=${{ matrix.arch }} go build -ldflags "-s -w" -o dist/zoeyworker-darwin-${{ matrix.arch }} ./cmd/zoeyworker
+          CGO_ENABLED=1 go build -ldflags "-s -w" -o dist/zoeyworker-darwin-arm64 ./cmd/zoeyworker
 
       - name: Build GUI
         working-directory: cmd/zoeyworker-gui
         run: |
-          wails build -platform darwin/${{ matrix.arch }}
-          mv build/bin/zoeyworker-gui.app ../../dist/ZoeyWorker-darwin-${{ matrix.arch }}.app
+          wails build -platform darwin/arm64
+          cp -r build/bin/zoeyworker-gui.app ../../dist/ZoeyWorker-darwin-arm64.app
+
+      - name: Zip App Bundle
+        run: |
+          cd dist
+          zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker-darwin-arm64.app
+          rm -rf ZoeyWorker-darwin-arm64.app
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zoeyworker-darwin-${{ matrix.arch }}
+          name: zoeyworker-darwin-arm64
+          path: dist/
+
+  build-macos-amd64:
+    runs-on: macos-13  # Intel runner for amd64 native build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install OpenCV
+        run: |
+          brew install opencv
+          echo "PKG_CONFIG_PATH=$(brew --prefix opencv)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "CGO_CPPFLAGS=-I$(brew --prefix opencv)/include/opencv4" >> $GITHUB_ENV
+          echo "CGO_LDFLAGS=-L$(brew --prefix opencv)/lib" >> $GITHUB_ENV
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build CLI
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=1 go build -ldflags "-s -w" -o dist/zoeyworker-darwin-amd64 ./cmd/zoeyworker
+
+      - name: Build GUI
+        working-directory: cmd/zoeyworker-gui
+        run: |
+          wails build -platform darwin/amd64
+          cp -r build/bin/zoeyworker-gui.app ../../dist/ZoeyWorker-darwin-amd64.zip
+
+      - name: Zip App Bundle
+        run: |
+          cd dist
+          zip -r ZoeyWorker-darwin-amd64.zip ZoeyWorker-darwin-amd64.app
+          rm -rf ZoeyWorker-darwin-amd64.app
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoeyworker-darwin-amd64
           path: dist/
 
   build-windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,20 +128,23 @@ jobs:
       - name: Build CLI
         shell: msys2 {0}
         run: |
-          export PATH="/mingw64/bin:$PATH"
+          export GOROOT="/c/hostedtoolcache/windows/go/${{ env.GO_VERSION }}.x/x64"
+          export PATH="$GOROOT/bin:/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
           mkdir -p dist
-          go build -ldflags "-s -w" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
+          go build -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
 
       - name: Build GUI
         shell: msys2 {0}
         working-directory: cmd/zoeyworker-gui
         run: |
-          export PATH="/mingw64/bin:$PATH"
+          export GOROOT="/c/hostedtoolcache/windows/go/${{ env.GO_VERSION }}.x/x64"
+          export GOPATH="$HOME/go"
+          export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
-          wails build
+          wails build -platform windows/amd64
           mv build/bin/zoeyworker-gui.exe ../../dist/ZoeyWorker-windows-amd64.exe
 
       - name: Upload Artifacts
@@ -97,7 +154,7 @@ jobs:
           path: dist/
 
   release:
-    needs: [build-macos, build-windows]
+    needs: [build-macos-arm64, build-macos-amd64, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -106,10 +163,16 @@ jobs:
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.exe
+            artifacts/**/zoeyworker-*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
