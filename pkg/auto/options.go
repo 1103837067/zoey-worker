@@ -50,7 +50,7 @@ type Region struct {
 // DefaultOptions 默认配置
 func DefaultOptions() *Options {
 	return &Options{
-		Timeout:     10 * time.Second,
+		Timeout:     3 * time.Second, // 默认 3 秒超时
 		Interval:    200 * time.Millisecond,
 		Threshold:   0.8,
 		ClickOffset: Point{X: 0, Y: 0},
