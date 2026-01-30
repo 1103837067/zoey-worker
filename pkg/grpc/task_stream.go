@@ -17,20 +17,27 @@ type TaskStreamHandler struct {
 	stopCh   chan struct{}
 	stream   pb.AgentService_TaskStreamClient
 
-	onTask   TaskCallback
-	onCancel CancelCallback
+	onTask           TaskCallback
+	onCancel         CancelCallback
+	onExecutorStatus ExecutorStatusCallback
+
+	heartbeatInterval int // 心跳间隔（秒）
+	heartbeatFailures int // 心跳失败次数
+	maxFailures       int // 最大失败次数
 
 	mu      sync.Mutex
 	running bool
 }
 
 // NewTaskStreamHandler 创建任务流处理器
-func NewTaskStreamHandler(client *Client, agentID string) *TaskStreamHandler {
+func NewTaskStreamHandler(client *Client, agentID string, heartbeatInterval, maxFailures int) *TaskStreamHandler {
 	return &TaskStreamHandler{
-		client:   client,
-		agentID:  agentID,
-		outgoing: make(chan *pb.WorkerMessage, 100),
-		stopCh:   make(chan struct{}),
+		client:            client,
+		agentID:           agentID,
+		outgoing:          make(chan *pb.WorkerMessage, 100),
+		stopCh:            make(chan struct{}),
+		heartbeatInterval: heartbeatInterval,
+		maxFailures:       maxFailures,
 	}
 }
 
@@ -45,6 +52,13 @@ func (h *TaskStreamHandler) SetTaskCallback(callback TaskCallback) {
 func (h *TaskStreamHandler) SetCancelCallback(callback CancelCallback) {
 	h.mu.Lock()
 	h.onCancel = callback
+	h.mu.Unlock()
+}
+
+// SetExecutorStatusCallback 设置执行器状态回调
+func (h *TaskStreamHandler) SetExecutorStatusCallback(callback ExecutorStatusCallback) {
+	h.mu.Lock()
+	h.onExecutorStatus = callback
 	h.mu.Unlock()
 }
 
@@ -91,6 +105,9 @@ func (h *TaskStreamHandler) Start(client pb.AgentServiceClient, stopCh chan stru
 	// 启动发送协程
 	go h.sendLoop(stream)
 
+	// 启动心跳协程（替代独立的 Heartbeat RPC）
+	go h.heartbeatLoop()
+
 	// 接收消息循环
 	h.receiveLoop(stream)
 }
@@ -108,6 +125,61 @@ func (h *TaskStreamHandler) sendLoop(stream pb.AgentService_TaskStreamClient) {
 			}
 		}
 	}
+}
+
+// heartbeatLoop 心跳循环（在 TaskStream 内发送心跳）
+func (h *TaskStreamHandler) heartbeatLoop() {
+	ticker := time.NewTicker(time.Duration(h.heartbeatInterval) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-h.stopCh:
+			return
+		case <-ticker.C:
+			h.sendHeartbeat()
+		}
+	}
+}
+
+// sendHeartbeat 发送心跳消息
+func (h *TaskStreamHandler) sendHeartbeat() {
+	h.mu.Lock()
+	callback := h.onExecutorStatus
+	h.mu.Unlock()
+
+	// 构建 AgentStatus
+	var agentStatus *pb.AgentStatus
+	if callback != nil {
+		status, taskID, taskType, startedAt, count := callback()
+		agentStatus = &pb.AgentStatus{
+			Status:            status,
+			CurrentTaskId:     taskID,
+			CurrentTaskType:   taskType,
+			TaskStartedAt:     startedAt,
+			RunningTasksCount: int32(count),
+		}
+	} else {
+		agentStatus = &pb.AgentStatus{
+			Status:            "IDLE",
+			RunningTasksCount: 0,
+		}
+	}
+
+	// 发送心跳消息
+	msg := &pb.WorkerMessage{
+		MessageId: fmt.Sprintf("heartbeat_%d", time.Now().UnixMilli()),
+		Timestamp: time.Now().UnixMilli(),
+		AgentId:   h.agentID,
+		Payload: &pb.WorkerMessage_Heartbeat{
+			Heartbeat: &pb.StreamHeartbeat{
+				AgentStatus: agentStatus,
+			},
+		},
+	}
+
+	h.SendMessage(msg)
+	h.client.log("DEBUG", "Stream heartbeat sent")
 }
 
 // receiveLoop 接收消息循环

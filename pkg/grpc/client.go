@@ -26,8 +26,6 @@ type Client struct {
 	stopCh     chan struct{}
 	wg         sync.WaitGroup
 
-	heartbeatFailures int
-
 	onStatusChange   StatusCallback
 	onTask           TaskCallback
 	onCancel         CancelCallback
@@ -132,18 +130,13 @@ func (c *Client) doConnect() error {
 	c.agentID = resp.AgentId
 	c.agentName = resp.AgentName
 	c.isConnected = true
-	c.heartbeatFailures = 0
 	c.stopCh = make(chan struct{})
 	c.mu.Unlock()
 
 	c.log("INFO", fmt.Sprintf("Connected as %s (%s)", c.agentName, c.agentID))
 	c.setStatus(StatusConnected)
 
-	// 启动心跳
-	c.wg.Add(1)
-	go c.heartbeatLoop()
-
-	// 启动任务流
+	// 启动任务流（心跳已集成到 TaskStream 中）
 	c.startTaskStream()
 
 	return nil
@@ -184,80 +177,6 @@ func (c *Client) Disconnect() error {
 	c.setStatus(StatusDisconnected)
 
 	return nil
-}
-
-// heartbeatLoop 心跳循环
-func (c *Client) heartbeatLoop() {
-	defer c.wg.Done()
-
-	ticker := time.NewTicker(time.Duration(c.config.HeartbeatInterval) * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-c.stopCh:
-			return
-		case <-ticker.C:
-			c.mu.RLock()
-			if !c.isConnected || c.client == nil {
-				c.mu.RUnlock()
-				continue
-			}
-			agentID := c.agentID
-			executorStatusCallback := c.onExecutorStatus
-			c.mu.RUnlock()
-
-			// 构建心跳请求
-			req := &pb.HeartbeatRequest{
-				AgentId:   agentID,
-				Timestamp: time.Now().UnixMilli(),
-			}
-
-			// 添加执行器状态
-			if executorStatusCallback != nil {
-				status, taskID, taskType, startedAt, count := executorStatusCallback()
-				req.AgentStatus = &pb.AgentStatus{
-					Status:            status,
-					CurrentTaskId:     taskID,
-					CurrentTaskType:   taskType,
-					TaskStartedAt:     startedAt,
-					RunningTasksCount: int32(count),
-				}
-			} else {
-				// 默认空闲状态
-				req.AgentStatus = &pb.AgentStatus{
-					Status:            "IDLE",
-					RunningTasksCount: 0,
-				}
-			}
-
-			// 发送心跳
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_, err := c.client.Heartbeat(ctx, req)
-			cancel()
-
-			if err != nil {
-				c.mu.Lock()
-				c.heartbeatFailures++
-				failures := c.heartbeatFailures
-				maxFailures := c.config.MaxHeartbeatFailures
-				c.mu.Unlock()
-
-				c.log("WARN", fmt.Sprintf("Heartbeat failed (%d/%d): %v", failures, maxFailures, err))
-
-				if failures >= maxFailures {
-					c.log("INFO", "Too many heartbeat failures, attempting reconnect...")
-					go c.attemptReconnect()
-					return
-				}
-			} else {
-				c.mu.Lock()
-				c.heartbeatFailures = 0
-				c.mu.Unlock()
-				c.log("DEBUG", "Heartbeat sent")
-			}
-		}
-	}
 }
 
 // attemptReconnect 尝试重连
@@ -318,16 +237,29 @@ func (c *Client) startTaskStream() {
 	c.mu.RLock()
 	client := c.client
 	agentID := c.agentID
+	heartbeatInterval := c.config.HeartbeatInterval
+	maxFailures := c.config.MaxHeartbeatFailures
 	c.mu.RUnlock()
 
-	c.taskStream = NewTaskStreamHandler(c, agentID)
+	c.taskStream = NewTaskStreamHandler(c, agentID, heartbeatInterval, maxFailures)
 	c.taskStream.SetTaskCallback(c.onTask)
 	c.taskStream.SetCancelCallback(c.onCancel)
+	c.taskStream.SetExecutorStatusCallback(c.onExecutorStatus)
 
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		c.taskStream.Start(client, c.stopCh)
+		
+		// TaskStream 结束意味着连接断开，尝试重连
+		c.mu.RLock()
+		isConnected := c.isConnected
+		c.mu.RUnlock()
+		
+		if isConnected {
+			c.log("WARN", "Task stream ended unexpectedly, attempting reconnect...")
+			go c.attemptReconnect()
+		}
 	}()
 }
 
