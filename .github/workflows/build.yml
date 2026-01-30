@@ -51,6 +51,18 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Get Go paths
+        id: go-paths
+        shell: pwsh
+        run: |
+          $goRoot = (go env GOROOT) -replace '\\', '/' -replace '^C:', '/c'
+          $goPath = (go env GOPATH) -replace '\\', '/' -replace '^C:', '/c'
+          echo "GOROOT=$goRoot" >> $env:GITHUB_OUTPUT
+          echo "GOPATH=$goPath" >> $env:GITHUB_OUTPUT
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -60,11 +72,11 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
+        env:
+          GOROOT: ${{ steps.go-paths.outputs.GOROOT }}
+          GOPATH: ${{ steps.go-paths.outputs.GOPATH }}
         run: |
-          # 设置 Go 路径
-          export PATH="/c/hostedtoolcache/windows/go/${{ env.GO_VERSION }}/x64/bin:$PATH"
-          export GOPATH="/c/Users/runneradmin/go"
-          export PATH="$GOPATH/bin:$PATH"
+          export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           
           # OpenCV 配置
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
@@ -74,8 +86,6 @@ jobs:
           export CGO_CPPFLAGS="$CGO_CFLAGS"
           export CGO_CXXFLAGS="$CGO_CFLAGS"
           export OPENCV_GO_SKIP_LINKING=1
-          
-          go install github.com/wailsapp/wails/v2/cmd/wails@latest
           
           mkdir -p dist
           go build -tags customenv -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-cli.exe ./cmd/zoeyworker
