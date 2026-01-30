@@ -51,7 +51,7 @@ jobs:
           # 构建 GUI
           cd cmd/zoeyworker-gui
           wails build -platform darwin/arm64
-          cp -r build/bin/zoeyworker-gui.app ../../dist/ZoeyWorker-darwin-arm64.app
+          cp -r build/bin/ZoeyWorker.app ../../dist/ZoeyWorker-darwin-arm64.app
           # 等待 CLI 完成
           wait $CLI_PID
 
