@@ -151,30 +151,33 @@ jobs:
           cp dist/ZoeyWorker.exe dist/portable/ 2>/dev/null || true
           cp dist/zoeyworker-cli.exe dist/portable/ 2>/dev/null || true
           
-          # 使用 ldd 自动检测并复制所有依赖 DLL
-          for exe in dist/portable/*.exe; do
-            for dll in $(ldd "$exe" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
-              cp "$dll" dist/portable/ 2>/dev/null || true
+          # 递归函数：自动检测并复制所有依赖 DLL（包括 DLL 的依赖）
+          copy_deps() {
+            local file="$1"
+            for dll in $(ldd "$file" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
+              local basename=$(basename "$dll")
+              if [ ! -f "dist/portable/$basename" ]; then
+                cp "$dll" dist/portable/
+                echo "  Copied: $basename"
+                # 递归检测这个 DLL 的依赖
+                copy_deps "$dll"
+              fi
             done
+          }
+          
+          echo "=== Auto-detecting dependencies ==="
+          for exe in dist/portable/*.exe; do
+            echo "Scanning: $(basename $exe)"
+            copy_deps "$exe"
           done
           
-          # 确保核心 DLL 存在
-          cp /mingw64/bin/libgcc_s_seh-1.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libstdc++-6.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libwinpthread-1.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libopencv_*.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libtbb12.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libpng16-16.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libjpeg-8.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/zlib1.dll dist/portable/ 2>/dev/null || true
-          cp /mingw64/bin/libgomp-1.dll dist/portable/ 2>/dev/null || true
-          
-          # UPX 压缩（可选）
+          # UPX 压缩 exe（可选）
           upx --best dist/portable/*.exe 2>/dev/null || true
           
+          echo ""
           echo "=== Portable package contents ==="
           ls -lh dist/portable/
-          echo "Total DLLs: $(ls dist/portable/*.dll 2>/dev/null | wc -l)"
+          echo "Total files: $(ls dist/portable/* | wc -l)"
 
       - name: Package Windows distribution
         shell: pwsh
