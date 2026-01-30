@@ -179,17 +179,14 @@ jobs:
           Move-Item dist/*.exe dist/ZoeyWorker-windows/
           Move-Item dist/*.dll dist/ZoeyWorker-windows/
           # Create README
-          @"
-ZoeyWorker for Windows
-======================
-
-Usage:
-1. Run ZoeyWorker.exe (GUI version)
-   or
-2. Run zoeyworker-windows-amd64.exe (CLI version)
-
-All DLL files must be in the same directory as the exe files.
-"@ | Out-File -FilePath dist/ZoeyWorker-windows/README.txt -Encoding UTF8
+          $readme = "ZoeyWorker for Windows`n"
+          $readme += "======================`n`n"
+          $readme += "Usage:`n"
+          $readme += "1. Run ZoeyWorker.exe (GUI version)`n"
+          $readme += "   or`n"
+          $readme += "2. Run zoeyworker-windows-amd64.exe (CLI version)`n`n"
+          $readme += "All DLL files must be in the same directory as the exe files."
+          $readme | Out-File -FilePath dist/ZoeyWorker-windows/README.txt -Encoding UTF8
           
           # Create zip
           Compress-Archive -Path dist/ZoeyWorker-windows -DestinationPath dist/ZoeyWorker-windows-amd64.zip -Force
