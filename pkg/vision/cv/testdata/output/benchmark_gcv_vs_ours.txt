@@ -1,0 +1,24 @@
+
+Template        Method                    Found    Position        Conf       Time        
+------------------------------------------------------------------------------------------
+template3.png   FindAllImg (tpl)          ✅        (110,45)        1.000      99.961ms    
+                Find (tpl+sift)           ✅        (110,45)        1.000      111.063ms   
+                TemplateMatching          ✅        (110,45)        1.000      61.818ms    
+                AKAZE                     ✅        (110,45)        1.000      124.969ms   
+                BRISK                     ✅        (110,45)        1.000      71.997ms    
+                Full (tpl→akaze→brisk)    ✅        (110,45)        -          72.601ms    
+
+template1.png   FindAllImg (tpl)          ✅        (444,689)       1.000      138.187ms   
+                Find (tpl+sift)           ✅        (444,689)       1.000      289.467ms   
+                TemplateMatching          ✅        (444,689)       1.000      98.731ms    
+                AKAZE                     ✅        (443,689)       1.000      186.158ms   
+                BRISK                     ✅        (443,689)       1.000      80.811ms    
+                Full (tpl→akaze→brisk)    ✅        (443,689)       -          79.401ms    
+
+template2.png   FindAllImg (tpl)          ✅        (523,994)       1.000      107.377ms   
+                Find (tpl+sift)           ✅        (523,994)       1.000      112.226ms   
+                TemplateMatching          ✅        (523,994)       1.000      57.84ms     
+                AKAZE                     ✅        (523,993)       1.000      250.662ms   
+                BRISK                     ✅        (523,993)       0.990      165.7ms     
+                Full (tpl→akaze→brisk)    ✅        (523,993)       -          101.074ms   
+
