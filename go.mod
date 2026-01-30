@@ -7,7 +7,6 @@ require (
 	github.com/go-vgo/robotgo v1.0.0
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/shirou/gopsutil/v4 v4.25.10
-	github.com/up-zero/gotool v0.0.0-20260120011100-d685b2532b5a
 	github.com/vcaesar/gcv v0.44.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	gocv.io/x/gocv v0.41.0
@@ -50,6 +49,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
+	github.com/up-zero/gotool v0.0.0-20260120011100-d685b2532b5a // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/vcaesar/gops v0.41.0 // indirect

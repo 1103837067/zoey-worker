@@ -172,32 +172,31 @@ func printHelp() {
 
 // checkMacOSPermissions 检查 macOS 权限
 func checkMacOSPermissions() {
+	fmt.Println("[INFO] 正在检查 macOS 权限...")
 	status := auto.CheckPermissions()
 	
+	fmt.Printf("[INFO] 辅助功能权限: %v\n", status.Accessibility)
+	fmt.Printf("[INFO] 屏幕录制权限: %v\n", status.ScreenRecording)
+	
 	if status.AllGranted {
-		fmt.Println("[INFO] macOS 权限检查通过")
+		fmt.Println("[INFO] ✓ 所有权限已授予")
 		return
 	}
 	
-	fmt.Println("[WARN] ========== macOS 权限检查 ==========")
+	fmt.Println()
+	fmt.Println("[WARN] ========== 缺少权限 ==========")
 	
 	if !status.Accessibility {
-		fmt.Println("[WARN] ❌ 辅助功能权限: 未授权")
-		fmt.Println("       用于控制鼠标和键盘")
-	} else {
-		fmt.Println("[INFO] ✓ 辅助功能权限: 已授权")
+		fmt.Println("[WARN] ❌ 辅助功能: 未授权 (用于控制鼠标/键盘)")
 	}
 	
 	if !status.ScreenRecording {
-		fmt.Println("[WARN] ❌ 屏幕录制权限: 未授权")
-		fmt.Println("       用于截屏和图像识别")
-	} else {
-		fmt.Println("[INFO] ✓ 屏幕录制权限: 已授权")
+		fmt.Println("[WARN] ❌ 屏幕录制: 未授权 (用于截屏)")
 	}
 	
 	fmt.Println()
-	fmt.Println("[WARN] 请在 系统偏好设置 > 安全性与隐私 > 隐私 中授权")
-	fmt.Println("[WARN] 授权后需要重启应用才能生效")
-	fmt.Println("[WARN] ========================================")
+	fmt.Println("[WARN] 请在 系统设置 > 隐私与安全性 中授权")
+	fmt.Println("[WARN] 授权后需要重启应用")
+	fmt.Println("[WARN] ==================================")
 	fmt.Println()
 }
