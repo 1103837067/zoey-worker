@@ -108,6 +108,10 @@ jobs:
           export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
           export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
           export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
+          export CGO_CXXFLAGS="$(pkg-config --cflags opencv4)"
+          
+          # Disable gocv's default Windows static library linking
+          export OPENCV_GO_SKIP_LINKING=1
           
           echo "Using Go: $(which go)"
           go version
@@ -115,7 +119,7 @@ jobs:
           echo "CGO_LDFLAGS: $CGO_LDFLAGS"
           
           mkdir -p dist
-          go build -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
+          go build -tags customenv -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
 
       - name: Build GUI
         shell: msys2 {0}
@@ -134,8 +138,12 @@ jobs:
           export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
           export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
           export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
+          export CGO_CXXFLAGS="$(pkg-config --cflags opencv4)"
           
-          wails build -platform windows/amd64
+          # Disable gocv's default Windows static library linking
+          export OPENCV_GO_SKIP_LINKING=1
+          
+          wails build -platform windows/amd64 -tags customenv
           mv build/bin/zoeyworker-gui.exe ../../dist/ZoeyWorker-windows-amd64.exe
 
       - name: Upload Artifacts
