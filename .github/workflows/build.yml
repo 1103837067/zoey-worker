@@ -165,6 +165,26 @@ jobs:
           cp /mingw64/bin/libintl-8.dll dist/ 2>/dev/null || true
           cp /mingw64/bin/libiconv-2.dll dist/ 2>/dev/null || true
           cp /mingw64/bin/libpcre2-8-0.dll dist/ 2>/dev/null || true
+          # TBB (Threading Building Blocks) - required by OpenCV
+          cp /mingw64/bin/libtbb12.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/tbb12.dll dist/ 2>/dev/null || true
+          # OpenSSL - may be required
+          cp /mingw64/bin/libssl-*.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libcrypto-*.dll dist/ 2>/dev/null || true
+          # Qt6 (if OpenCV was built with Qt support)
+          cp /mingw64/bin/Qt6Core.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/Qt6Gui.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/Qt6Widgets.dll dist/ 2>/dev/null || true
+          # Additional OpenCV dependencies
+          cp /mingw64/bin/libprotobuf.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libhdf5.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libhdf5_hl.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libsz*.dll dist/ 2>/dev/null || true
+          cp /mingw64/bin/libaec*.dll dist/ 2>/dev/null || true
+          # Copy all remaining OpenCV dependencies using ldd
+          for dll in $(ldd dist/zoeyworker-windows-amd64.exe 2>/dev/null | grep mingw64 | awk '{print $3}'); do
+            cp "$dll" dist/ 2>/dev/null || true
+          done
           
           echo "Copied DLLs:"
           ls -la dist/*.dll | wc -l
