@@ -17,7 +17,8 @@ type TaskStreamHandler struct {
 	stopCh   chan struct{}
 	stream   pb.AgentService_TaskStreamClient
 
-	onTask TaskCallback
+	onTask   TaskCallback
+	onCancel CancelCallback
 
 	mu      sync.Mutex
 	running bool
@@ -37,6 +38,13 @@ func NewTaskStreamHandler(client *Client, agentID string) *TaskStreamHandler {
 func (h *TaskStreamHandler) SetTaskCallback(callback TaskCallback) {
 	h.mu.Lock()
 	h.onTask = callback
+	h.mu.Unlock()
+}
+
+// SetCancelCallback 设置取消回调
+func (h *TaskStreamHandler) SetCancelCallback(callback CancelCallback) {
+	h.mu.Lock()
+	h.onCancel = callback
 	h.mu.Unlock()
 }
 
@@ -185,6 +193,9 @@ func (h *TaskStreamHandler) handleDataRequest(msgID string, req *pb.DataRequest)
 	// 调用数据处理器
 	response := HandleDataRequest(req.RequestType, req.PayloadJson)
 
+	h.client.log("DEBUG", fmt.Sprintf("Data response: success=%v, msg=%s, payload_len=%d",
+		response.Success, response.Message, len(response.PayloadJSON)))
+
 	// 发送响应
 	msg := &pb.WorkerMessage{
 		MessageId: msgID,
@@ -201,12 +212,44 @@ func (h *TaskStreamHandler) handleDataRequest(msgID string, req *pb.DataRequest)
 	}
 
 	h.SendMessage(msg)
+	h.client.log("DEBUG", "Data response sent to queue")
 }
 
 // handleCancelTask 处理取消任务请求
 func (h *TaskStreamHandler) handleCancelTask(cmd *pb.CancelTaskCommand) {
 	h.client.log("INFO", fmt.Sprintf("Received cancel task: %s, reason: %s", cmd.TaskId, cmd.Reason))
-	// TODO: 实现任务取消逻辑
+
+	h.mu.Lock()
+	callback := h.onCancel
+	h.mu.Unlock()
+
+	success := false
+	if callback != nil {
+		success = callback(cmd.TaskId)
+	}
+
+	// 发送取消确认
+	msg := &pb.WorkerMessage{
+		MessageId: fmt.Sprintf("cancel_ack_%d", time.Now().UnixMilli()),
+		Timestamp: time.Now().UnixMilli(),
+		AgentId:   h.agentID,
+		Payload: &pb.WorkerMessage_TaskResult{
+			TaskResult: &pb.TaskResult{
+				TaskId:  cmd.TaskId,
+				Success: success,
+				Status:  "CANCELLED",
+				Message: cmd.Reason,
+			},
+		},
+	}
+
+	h.SendMessage(msg)
+
+	if success {
+		h.client.log("INFO", fmt.Sprintf("Task cancelled successfully: %s", cmd.TaskId))
+	} else {
+		h.client.log("WARN", fmt.Sprintf("Task not found or already completed: %s", cmd.TaskId))
+	}
 }
 
 // SendMessage 发送消息

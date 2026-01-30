@@ -5,50 +5,103 @@ import (
 	"fmt"
 	"image/png"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
+	"github.com/zoeyai/zoeyworker/pkg/uia"
 )
 
 // TaskType 任务类型
 const (
 	TaskTypeClickImage    = "click_image"
 	TaskTypeClickText     = "click_text"
+	TaskTypeClickNative   = "click_native"
 	TaskTypeTypeText      = "type_text"
 	TaskTypeKeyPress      = "key_press"
 	TaskTypeScreenshot    = "screenshot"
 	TaskTypeWaitImage     = "wait_image"
 	TaskTypeWaitText      = "wait_text"
+	TaskTypeWaitTime      = "wait_time"
 	TaskTypeMouseMove     = "mouse_move"
 	TaskTypeMouseClick    = "mouse_click"
 	TaskTypeActivateApp   = "activate_app"
+	TaskTypeCloseApp      = "close_app"
 	TaskTypeGridClick     = "grid_click"
 	TaskTypeImageExists   = "image_exists"
 	TaskTypeTextExists    = "text_exists"
+	TaskTypeAssertImage   = "assert_image"
+	TaskTypeAssertText    = "assert_text"
 	TaskTypeGetClipboard  = "get_clipboard"
 	TaskTypeSetClipboard  = "set_clipboard"
 )
 
 // Executor 任务执行器
 type Executor struct {
-	client *grpc.Client
+	client        *grpc.Client
+	runningTasks  map[string]chan struct{} // 运行中的任务及其取消通道
+	tasksMutex    sync.Mutex
 }
 
 // NewExecutor 创建任务执行器
 func NewExecutor(client *grpc.Client) *Executor {
 	return &Executor{
-		client: client,
+		client:       client,
+		runningTasks: make(map[string]chan struct{}),
 	}
+}
+
+// CancelTask 取消任务
+func (e *Executor) CancelTask(taskID string) bool {
+	e.tasksMutex.Lock()
+	defer e.tasksMutex.Unlock()
+
+	if cancelCh, exists := e.runningTasks[taskID]; exists {
+		close(cancelCh)
+		delete(e.runningTasks, taskID)
+		return true
+	}
+	return false
+}
+
+// registerTask 注册运行中的任务
+func (e *Executor) registerTask(taskID string) chan struct{} {
+	e.tasksMutex.Lock()
+	defer e.tasksMutex.Unlock()
+
+	cancelCh := make(chan struct{})
+	e.runningTasks[taskID] = cancelCh
+	return cancelCh
+}
+
+// unregisterTask 注销任务
+func (e *Executor) unregisterTask(taskID string) {
+	e.tasksMutex.Lock()
+	defer e.tasksMutex.Unlock()
+
+	delete(e.runningTasks, taskID)
 }
 
 // Execute 执行任务
 func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	startTime := time.Now()
 
+	// 注册任务，获取取消通道
+	cancelCh := e.registerTask(taskID)
+	defer e.unregisterTask(taskID)
+
 	// 发送任务确认
 	e.sendTaskAck(taskID, true, "任务已接收")
+
+	// 检查是否已被取消
+	select {
+	case <-cancelCh:
+		e.sendTaskResult(taskID, false, "CANCELLED", "任务在开始前被取消", "{}", startTime)
+		return
+	default:
+	}
 
 	// 解析 payload
 	var payload map[string]interface{}
@@ -66,6 +119,8 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		result, err = e.executeClickImage(payload)
 	case TaskTypeClickText:
 		result, err = e.executeClickText(payload)
+	case TaskTypeClickNative:
+		result, err = e.executeClickNative(payload)
 	case TaskTypeTypeText:
 		result, err = e.executeTypeText(payload)
 	case TaskTypeKeyPress:
@@ -76,18 +131,26 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		result, err = e.executeWaitImage(payload)
 	case TaskTypeWaitText:
 		result, err = e.executeWaitText(payload)
+	case TaskTypeWaitTime:
+		result, err = e.executeWaitTime(payload)
 	case TaskTypeMouseMove:
 		result, err = e.executeMouseMove(payload)
 	case TaskTypeMouseClick:
 		result, err = e.executeMouseClick(payload)
 	case TaskTypeActivateApp:
 		result, err = e.executeActivateApp(payload)
+	case TaskTypeCloseApp:
+		result, err = e.executeCloseApp(payload)
 	case TaskTypeGridClick:
 		result, err = e.executeGridClick(payload)
 	case TaskTypeImageExists:
 		result, err = e.executeImageExists(payload)
 	case TaskTypeTextExists:
 		result, err = e.executeTextExists(payload)
+	case TaskTypeAssertImage:
+		result, err = e.executeAssertImage(payload)
+	case TaskTypeAssertText:
+		result, err = e.executeAssertText(payload)
 	case TaskTypeGetClipboard:
 		result, err = e.executeGetClipboard(payload)
 	case TaskTypeSetClipboard:
@@ -371,6 +434,117 @@ func (e *Executor) executeSetClipboard(payload map[string]interface{}) (interfac
 	}
 
 	return map[string]bool{"copied": true}, nil
+}
+
+// executeClickNative 执行原生控件点击
+func (e *Executor) executeClickNative(payload map[string]interface{}) (interface{}, error) {
+	// 检查是否支持 UIA
+	if !uia.IsSupported() {
+		return nil, fmt.Errorf("原生控件点击需要 Windows + Python + pywinauto 环境")
+	}
+
+	automationID, _ := payload["automation_id"].(string)
+	windowTitle, _ := payload["window_title"].(string)
+
+	if automationID == "" {
+		return nil, fmt.Errorf("缺少 automation_id 参数")
+	}
+
+	// 获取窗口句柄
+	var windowHandle int
+	if windowTitle != "" {
+		// 通过标题查找窗口
+		windows, err := auto.GetWindows(windowTitle)
+		if err != nil || len(windows) == 0 {
+			return nil, fmt.Errorf("未找到窗口: %s", windowTitle)
+		}
+		windowHandle = windows[0].PID
+	} else {
+		// 获取活动窗口
+		windows, err := auto.GetWindows()
+		if err != nil || len(windows) == 0 {
+			return nil, fmt.Errorf("未找到活动窗口")
+		}
+		windowHandle = windows[0].PID
+	}
+
+	// 尝试使用 UIA 点击
+	err := uia.ClickElement(windowHandle, automationID)
+	if err != nil {
+		return nil, fmt.Errorf("点击控件失败: %w", err)
+	}
+
+	return map[string]bool{"clicked": true}, nil
+}
+
+// executeWaitTime 执行等待时间
+func (e *Executor) executeWaitTime(payload map[string]interface{}) (interface{}, error) {
+	duration, ok := payload["duration"].(float64)
+	if !ok {
+		duration = 1000 // 默认 1 秒
+	}
+
+	time.Sleep(time.Duration(duration) * time.Millisecond)
+	return map[string]interface{}{"waited": true, "duration_ms": duration}, nil
+}
+
+// executeCloseApp 执行关闭应用
+func (e *Executor) executeCloseApp(payload map[string]interface{}) (interface{}, error) {
+	appName, ok := payload["app_name"].(string)
+	if !ok || appName == "" {
+		return nil, fmt.Errorf("缺少 app_name 参数")
+	}
+
+	// 查找进程并终止
+	processes, err := auto.GetProcesses()
+	if err != nil {
+		return nil, fmt.Errorf("获取进程列表失败: %w", err)
+	}
+
+	for _, proc := range processes {
+		if proc.Name == appName {
+			if err := auto.KillProcess(proc.PID); err != nil {
+				return nil, fmt.Errorf("终止进程失败: %w", err)
+			}
+			return map[string]interface{}{"closed": true, "pid": proc.PID}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("未找到进程: %s", appName)
+}
+
+// executeAssertImage 执行图像断言
+func (e *Executor) executeAssertImage(payload map[string]interface{}) (interface{}, error) {
+	imagePath, ok := payload["image"].(string)
+	if !ok || imagePath == "" {
+		return nil, fmt.Errorf("缺少 image 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	exists := auto.ImageExists(imagePath, opts...)
+
+	if !exists {
+		return nil, fmt.Errorf("断言失败: 未找到指定图像")
+	}
+
+	return map[string]bool{"asserted": true, "exists": true}, nil
+}
+
+// executeAssertText 执行文字断言
+func (e *Executor) executeAssertText(payload map[string]interface{}) (interface{}, error) {
+	text, ok := payload["text"].(string)
+	if !ok || text == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	exists := auto.TextExists(text, opts...)
+
+	if !exists {
+		return nil, fmt.Errorf("断言失败: 未找到指定文字 '%s'", text)
+	}
+
+	return map[string]bool{"asserted": true, "exists": true}, nil
 }
 
 // parseAutoOptions 解析自动化选项

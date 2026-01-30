@@ -30,6 +30,7 @@ type Client struct {
 
 	onStatusChange StatusCallback
 	onTask         TaskCallback
+	onCancel       CancelCallback
 
 	logs   []LogEntry
 	logsMu sync.Mutex
@@ -293,6 +294,7 @@ func (c *Client) startTaskStream() {
 
 	c.taskStream = NewTaskStreamHandler(c, agentID)
 	c.taskStream.SetTaskCallback(c.onTask)
+	c.taskStream.SetCancelCallback(c.onCancel)
 
 	c.wg.Add(1)
 	go func() {
@@ -331,6 +333,13 @@ func (c *Client) SetStatusCallback(callback StatusCallback) {
 func (c *Client) SetTaskCallback(callback TaskCallback) {
 	c.mu.Lock()
 	c.onTask = callback
+	c.mu.Unlock()
+}
+
+// SetCancelCallback 设置取消任务回调
+func (c *Client) SetCancelCallback(callback CancelCallback) {
+	c.mu.Lock()
+	c.onCancel = callback
 	c.mu.Unlock()
 }
 

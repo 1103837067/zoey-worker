@@ -81,6 +81,9 @@ type StatusCallback func(status ClientStatus)
 // TaskCallback 任务回调函数
 type TaskCallback func(taskID, taskType, payloadJSON string)
 
+// CancelCallback 取消任务回调函数
+type CancelCallback func(taskID string) bool
+
 // LogEntry 日志条目
 type LogEntry struct {
 	Timestamp string `json:"timestamp"`

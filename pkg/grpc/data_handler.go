@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/uia"
 )
 
 // DataRequestType 数据请求类型
@@ -52,8 +53,11 @@ func HandleDataRequest(requestType string, payloadJSON string) *DataResponseResu
 
 // handleGetApplications 处理获取应用程序列表请求
 func handleGetApplications() *DataResponseResult {
+	fmt.Printf("[DEBUG] handleGetApplications called\n")
+
 	processes, err := auto.GetProcesses()
 	if err != nil {
+		fmt.Printf("[ERROR] GetProcesses failed: %v\n", err)
 		return &DataResponseResult{
 			RequestType: RequestTypeGetApplications,
 			Success:     false,
@@ -61,6 +65,8 @@ func handleGetApplications() *DataResponseResult {
 			PayloadJSON: `{"applications":[]}`,
 		}
 	}
+
+	fmt.Printf("[DEBUG] Got %d processes\n", len(processes))
 
 	// 转换为应用程序信息格式
 	type ApplicationInfo struct {
@@ -70,32 +76,51 @@ func handleGetApplications() *DataResponseResult {
 		Path  string `json:"path"`
 	}
 
+	// 获取所有窗口（只调用一次，避免在循环中重复调用）
+	windows, windowsErr := auto.GetWindows()
+	if windowsErr != nil {
+		fmt.Printf("[WARN] GetWindows failed: %v\n", windowsErr)
+	} else {
+		fmt.Printf("[DEBUG] Got %d windows\n", len(windows))
+	}
+
+	// 创建 PID -> 窗口标题的映射
+	windowTitles := make(map[int]string)
+	for _, win := range windows {
+		if win.Title != "" && windowTitles[win.PID] == "" {
+			windowTitles[win.PID] = win.Title
+		}
+	}
+
 	apps := make([]ApplicationInfo, 0, len(processes))
 	for _, proc := range processes {
-		// 获取窗口标题（如果有）
-		title := ""
-		windows, _ := auto.GetWindows()
-		for _, win := range windows {
-			if win.PID == proc.PID {
-				title = win.Title
-				break
-			}
-		}
-
 		// 只返回有名称的进程
 		if proc.Name != "" {
 			apps = append(apps, ApplicationInfo{
 				PID:   proc.PID,
 				Name:  proc.Name,
-				Title: title,
+				Title: windowTitles[proc.PID],
 				Path:  proc.Path,
 			})
 		}
 	}
 
-	data, _ := json.Marshal(map[string]interface{}{
+	fmt.Printf("[DEBUG] Returning %d applications\n", len(apps))
+
+	data, err := json.Marshal(map[string]interface{}{
 		"applications": apps,
 	})
+	if err != nil {
+		fmt.Printf("[ERROR] JSON marshal failed: %v\n", err)
+		return &DataResponseResult{
+			RequestType: RequestTypeGetApplications,
+			Success:     false,
+			Message:     fmt.Sprintf("JSON序列化失败: %v", err),
+			PayloadJSON: `{"applications":[]}`,
+		}
+	}
+
+	fmt.Printf("[DEBUG] Response size: %d bytes\n", len(data))
 
 	return &DataResponseResult{
 		RequestType: RequestTypeGetApplications,
@@ -175,13 +200,100 @@ func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
 }
 
 // handleGetElements 处理获取 UI 元素请求
-// 注意: UI 元素检查依赖平台特定 API (Windows: pywinauto)
-// Go 版本暂不支持，返回空列表
+// 使用 Python 桥接支持 Windows UI Automation
 func handleGetElements(payload map[string]interface{}) *DataResponseResult {
+	// 检查是否支持 UIA
+	if !uia.IsSupported() {
+		return &DataResponseResult{
+			RequestType: RequestTypeGetElements,
+			Success:     false,
+			Message:     "UI 元素检查需要 Windows + Python + pywinauto 环境",
+			PayloadJSON: `{"elements":[]}`,
+		}
+	}
+
+	// 解析窗口句柄
+	windowHandle := 0
+	if handle, ok := payload["window_handle"].(float64); ok {
+		windowHandle = int(handle)
+	}
+
+	if windowHandle == 0 {
+		return &DataResponseResult{
+			RequestType: RequestTypeGetElements,
+			Success:     false,
+			Message:     "缺少有效的 window_handle 参数",
+			PayloadJSON: `{"elements":[]}`,
+		}
+	}
+
+	// 解析筛选参数
+	opts := &uia.GetElementsOptions{
+		MaxDepth: 3,
+	}
+	if automationID, ok := payload["automation_id"].(string); ok {
+		opts.AutomationID = automationID
+	}
+	if controlType, ok := payload["control_type"].(string); ok {
+		opts.ControlType = controlType
+	}
+	if maxDepth, ok := payload["max_depth"].(float64); ok {
+		opts.MaxDepth = int(maxDepth)
+	}
+
+	// 获取元素
+	elements, err := uia.GetElements(windowHandle, opts)
+	if err != nil {
+		return &DataResponseResult{
+			RequestType: RequestTypeGetElements,
+			Success:     false,
+			Message:     fmt.Sprintf("获取 UI 元素失败: %v", err),
+			PayloadJSON: `{"elements":[]}`,
+		}
+	}
+
+	// 转换为输出格式
+	type ElementOutput struct {
+		AutomationID string `json:"automation_id"`
+		Name         string `json:"name"`
+		ClassName    string `json:"class_name"`
+		ControlType  string `json:"control_type"`
+		Rect         struct {
+			X      int `json:"x"`
+			Y      int `json:"y"`
+			Width  int `json:"width"`
+			Height int `json:"height"`
+		} `json:"rect"`
+		IsEnabled bool   `json:"is_enabled"`
+		IsVisible bool   `json:"is_visible"`
+		Value     string `json:"value"`
+	}
+
+	output := make([]ElementOutput, len(elements))
+	for i, elem := range elements {
+		output[i] = ElementOutput{
+			AutomationID: elem.AutomationID,
+			Name:         elem.Name,
+			ClassName:    elem.ClassName,
+			ControlType:  elem.ControlType,
+			IsEnabled:    elem.IsEnabled,
+			IsVisible:    elem.IsVisible,
+			Value:        elem.Value,
+		}
+		output[i].Rect.X = elem.Rect.X
+		output[i].Rect.Y = elem.Rect.Y
+		output[i].Rect.Width = elem.Rect.Width
+		output[i].Rect.Height = elem.Rect.Height
+	}
+
+	data, _ := json.Marshal(map[string]interface{}{
+		"elements": output,
+	})
+
 	return &DataResponseResult{
 		RequestType: RequestTypeGetElements,
-		Success:     false,
-		Message:     "UI 元素检查在 Go 版本中暂不支持（需要平台特定 API）",
-		PayloadJSON: `{"elements":[]}`,
+		Success:     true,
+		Message:     "",
+		PayloadJSON: string(data),
 	}
 }

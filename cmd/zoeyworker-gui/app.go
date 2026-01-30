@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
@@ -35,6 +36,11 @@ func (a *App) startup(ctx context.Context) {
 	// 设置任务回调
 	a.grpcClient.SetTaskCallback(func(taskID, taskType, payloadJSON string) {
 		go a.executor.Execute(taskID, taskType, payloadJSON)
+	})
+
+	// 设置取消任务回调
+	a.grpcClient.SetCancelCallback(func(taskID string) bool {
+		return a.executor.CancelTask(taskID)
 	})
 }
 
@@ -202,4 +208,40 @@ func (a *App) GetSystemInfo() SystemInfo {
 		Platform: platform,
 		Version:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	}
+}
+
+// ==================== 权限管理 (macOS) ====================
+
+// PermissionInfo 权限信息
+type PermissionInfo struct {
+	Accessibility   bool   `json:"accessibility"`
+	ScreenRecording bool   `json:"screen_recording"`
+	AllGranted      bool   `json:"all_granted"`
+	Message         string `json:"message"`
+}
+
+// CheckPermissions 检查权限状态
+func (a *App) CheckPermissions() PermissionInfo {
+	status := auto.CheckPermissions()
+	return PermissionInfo{
+		Accessibility:   status.Accessibility,
+		ScreenRecording: status.ScreenRecording,
+		AllGranted:      status.AllGranted,
+		Message:         auto.GetPermissionInstructions(status),
+	}
+}
+
+// RequestAccessibilityPermission 请求辅助功能权限
+func (a *App) RequestAccessibilityPermission() bool {
+	return auto.RequestAccessibilityPermission()
+}
+
+// OpenAccessibilitySettings 打开辅助功能设置
+func (a *App) OpenAccessibilitySettings() {
+	auto.OpenAccessibilitySettings()
+}
+
+// OpenScreenRecordingSettings 打开屏幕录制设置
+func (a *App) OpenScreenRecordingSettings() {
+	auto.OpenScreenRecordingSettings()
 }

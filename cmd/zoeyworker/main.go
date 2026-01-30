@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
+	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
@@ -89,6 +91,11 @@ func main() {
 	fmt.Printf("服务端: %s\n", cfg.ServerURL)
 	fmt.Println()
 
+	// macOS 权限检查
+	if runtime.GOOS == "darwin" {
+		checkMacOSPermissions()
+	}
+
 	// 创建 gRPC 客户端
 	client := grpc.NewClient(nil)
 
@@ -161,4 +168,36 @@ func printHelp() {
 	fmt.Println("  zoeyworker")
 	fmt.Println()
 	fmt.Printf("配置文件位置: %s\n", config.GetDefaultManager().GetConfigFile())
+}
+
+// checkMacOSPermissions 检查 macOS 权限
+func checkMacOSPermissions() {
+	status := auto.CheckPermissions()
+	
+	if status.AllGranted {
+		fmt.Println("[INFO] macOS 权限检查通过")
+		return
+	}
+	
+	fmt.Println("[WARN] ========== macOS 权限检查 ==========")
+	
+	if !status.Accessibility {
+		fmt.Println("[WARN] ❌ 辅助功能权限: 未授权")
+		fmt.Println("       用于控制鼠标和键盘")
+	} else {
+		fmt.Println("[INFO] ✓ 辅助功能权限: 已授权")
+	}
+	
+	if !status.ScreenRecording {
+		fmt.Println("[WARN] ❌ 屏幕录制权限: 未授权")
+		fmt.Println("       用于截屏和图像识别")
+	} else {
+		fmt.Println("[INFO] ✓ 屏幕录制权限: 已授权")
+	}
+	
+	fmt.Println()
+	fmt.Println("[WARN] 请在 系统偏好设置 > 安全性与隐私 > 隐私 中授权")
+	fmt.Println("[WARN] 授权后需要重启应用才能生效")
+	fmt.Println("[WARN] ========================================")
+	fmt.Println()
 }
