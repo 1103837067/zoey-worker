@@ -2,8 +2,7 @@ name: Build ZoeyWorker
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
 
 env:
@@ -13,61 +12,32 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Cache Homebrew packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/Homebrew
-            /opt/homebrew/Cellar/opencv
-          key: macos-brew-opencv-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            macos-brew-opencv-
-
-      - name: Install Dependencies
+      - name: Install Dependencies & Build
         run: |
-          brew install opencv upx || true
-          echo "PKG_CONFIG_PATH=$(brew --prefix opencv)/lib/pkgconfig" >> $GITHUB_ENV
-          echo "CGO_CPPFLAGS=-I$(brew --prefix opencv)/include/opencv4" >> $GITHUB_ENV
-          echo "CGO_LDFLAGS=-L$(brew --prefix opencv)/lib" >> $GITHUB_ENV
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-      - name: Build CLI and GUI
-        run: |
+          brew install opencv || true
+          export PKG_CONFIG_PATH="$(brew --prefix opencv)/lib/pkgconfig"
+          export CGO_CPPFLAGS="-I$(brew --prefix opencv)/include/opencv4"
+          export CGO_LDFLAGS="-L$(brew --prefix opencv)/lib"
+          
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          
           mkdir -p dist
+          go build -ldflags "-s -w" -o dist/zoeyworker-darwin-arm64 ./cmd/zoeyworker
           
-          # 构建 CLI（优化体积）
-          CGO_ENABLED=1 go build -ldflags "-s -w" -o dist/zoeyworker-darwin-arm64 ./cmd/zoeyworker &
-          CLI_PID=$!
-          
-          # 构建 GUI（优化体积）
           cd cmd/zoeyworker-gui
-          wails build -platform darwin/arm64 -ldflags "-s -w" -clean
-          cp -r build/bin/ZoeyWorker.app ../../dist/ZoeyWorker-darwin-arm64.app
+          wails build -ldflags "-s -w" -clean
+          cd ../..
+          mv cmd/zoeyworker-gui/build/bin/ZoeyWorker.app dist/
           
-          wait $CLI_PID
-          
-          # UPX 压缩 CLI（可选，macOS 上可能有兼容性问题）
-          upx --best dist/zoeyworker-darwin-arm64 2>/dev/null || true
+          cd dist && zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app && rm -rf ZoeyWorker.app
 
-      - name: Zip App Bundle
-        run: |
-          cd dist
-          zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker-darwin-arm64.app
-          rm -rf ZoeyWorker-darwin-arm64.app
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: zoeyworker-darwin-arm64
           path: dist/
@@ -75,165 +45,73 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-
-      - name: Get Go paths
-        id: go-paths
-        shell: pwsh
-        run: |
-          $goRoot = (go env GOROOT)
-          $goPath = (go env GOPATH)
-          $goRootMsys = $goRoot -replace '\\', '/' -replace '^C:', '/c'
-          $goPathMsys = $goPath -replace '\\', '/' -replace '^C:', '/c'
-          echo "GOROOT_MSYS=$goRootMsys" >> $env:GITHUB_OUTPUT
-          echo "GOPATH_MSYS=$goPathMsys" >> $env:GITHUB_OUTPUT
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: false
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-opencv
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-nsis
-            mingw-w64-x86_64-upx
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-opencv mingw-w64-x86_64-pkg-config
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-      - name: Build CLI and GUI
+      - name: Build
         shell: msys2 {0}
-        env:
-          GOROOT_MSYS: ${{ steps.go-paths.outputs.GOROOT_MSYS }}
-          GOPATH_MSYS: ${{ steps.go-paths.outputs.GOPATH_MSYS }}
         run: |
-          export GOROOT="$GOROOT_MSYS"
-          export GOPATH="$GOPATH_MSYS"
-          export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
+          # 设置 Go 路径
+          export PATH="/c/hostedtoolcache/windows/go/${{ env.GO_VERSION }}/x64/bin:$PATH"
+          export GOPATH="/c/Users/runneradmin/go"
+          export PATH="$GOPATH/bin:$PATH"
           
-          # OpenCV configuration
+          # OpenCV 配置
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
           export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
           export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
-          export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
-          export CGO_CXXFLAGS="$(pkg-config --cflags opencv4)"
+          export CGO_CPPFLAGS="$CGO_CFLAGS"
+          export CGO_CXXFLAGS="$CGO_CFLAGS"
           export OPENCV_GO_SKIP_LINKING=1
           
-          mkdir -p dist
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
           
-          # 构建 CLI（优化体积）
+          mkdir -p dist
           go build -tags customenv -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-cli.exe ./cmd/zoeyworker
           
-          # 构建 GUI（使用 NSIS 生成安装程序）
           cd cmd/zoeyworker-gui
-          wails build -platform windows/amd64 -tags customenv -skipbindings -ldflags "-s -w" -nsis
-          
-          # 复制生成的安装程序
-          cp build/bin/ZoeyWorker-amd64-installer.exe ../../dist/ 2>/dev/null || true
-          cp build/bin/ZoeyWorker.exe ../../dist/ 2>/dev/null || true
+          wails build -tags customenv -skipbindings -ldflags "-s -w"
+          cp build/bin/ZoeyWorker.exe ../../dist/
 
-      - name: Copy DLLs and Create Portable Package
+      - name: Package with DLLs
         shell: msys2 {0}
         run: |
-          mkdir -p dist/portable
-          
-          # 复制 exe
-          cp dist/ZoeyWorker.exe dist/portable/ 2>/dev/null || true
-          cp dist/zoeyworker-cli.exe dist/portable/ 2>/dev/null || true
-          
-          # 递归函数：自动检测并复制所有依赖 DLL（包括 DLL 的依赖）
+          # 自动复制所有依赖 DLL
           copy_deps() {
-            local file="$1"
-            for dll in $(ldd "$file" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
-              local basename=$(basename "$dll")
-              if [ ! -f "dist/portable/$basename" ]; then
-                cp "$dll" dist/portable/
-                echo "  Copied: $basename"
-                # 递归检测这个 DLL 的依赖
-                copy_deps "$dll"
-              fi
+            for dll in $(ldd "$1" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
+              [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/ && copy_deps "$dll"
             done
           }
+          for exe in dist/*.exe; do copy_deps "$exe"; done
           
-          echo "=== Auto-detecting dependencies ==="
-          for exe in dist/portable/*.exe; do
-            echo "Scanning: $(basename $exe)"
-            copy_deps "$exe"
-          done
-          
-          # UPX 压缩 exe（可选）
-          upx --best dist/portable/*.exe 2>/dev/null || true
-          
-          echo ""
-          echo "=== Portable package contents ==="
-          ls -lh dist/portable/
-          echo "Total files: $(ls dist/portable/* | wc -l)"
+          cd dist && zip -r ../ZoeyWorker-windows.zip * && cd ..
+          rm -rf dist && mkdir dist && mv ZoeyWorker-windows.zip dist/
 
-      - name: Package Windows distribution
-        shell: pwsh
-        run: |
-          # 创建便携版 ZIP
-          if (Test-Path "dist/portable") {
-            # 添加 README
-            @"
-ZoeyWorker for Windows (Portable)
-==================================
-
-Usage:
-1. Run ZoeyWorker.exe (GUI version)
-2. Run zoeyworker-cli.exe (CLI version)
-
-Note: All DLL files must stay in the same folder as exe files.
-
-For easier installation, use the installer version:
-ZoeyWorker-amd64-installer.exe
-"@ | Out-File -FilePath "dist/portable/README.txt" -Encoding UTF8
-            
-            Compress-Archive -Path "dist/portable/*" -DestinationPath "dist/ZoeyWorker-windows-portable.zip" -Force
-            Remove-Item "dist/portable" -Recurse
-          }
-          
-          # 清理临时文件
-          Remove-Item "dist/*.exe" -Exclude "*installer*" -ErrorAction SilentlyContinue
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: zoeyworker-windows-amd64
-          path: |
-            dist/ZoeyWorker-amd64-installer.exe
-            dist/ZoeyWorker-windows-portable.zip
+          path: dist/
 
   release:
     needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: List artifacts
-        run: find artifacts -type f
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*installer*
-            artifacts/**/zoeyworker-*
+          files: artifacts/**/*.zip
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
