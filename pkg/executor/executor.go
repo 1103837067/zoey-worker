@@ -232,6 +232,9 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		return
 	}
 
+	// 在执行操作之前，先激活目标窗口（如果指定了）
+	e.activateTargetWindowIfNeeded(payload, taskType)
+
 	// 根据任务类型执行
 	var result interface{}
 	var err error
@@ -501,13 +504,65 @@ func (e *Executor) executeMouseClick(payload map[string]interface{}) (interface{
 	return map[string]bool{"clicked": true}, nil
 }
 
+// activateTargetWindowIfNeeded 在执行操作前激活目标窗口
+// 这是一个自动行为，不需要用户显式调用 activate_app
+func (e *Executor) activateTargetWindowIfNeeded(payload map[string]interface{}, taskType string) {
+	// 这些任务类型不需要激活窗口
+	skipTypes := map[string]bool{
+		TaskTypeActivateApp:  true, // activate_app 自己处理激活
+		TaskTypeCloseApp:     true, // 关闭应用不需要先激活
+		TaskTypeWaitTime:     true, // 等待时间不需要激活
+		TaskTypeGetClipboard: true, // 剪贴板操作不需要激活
+		TaskTypeSetClipboard: true,
+	}
+	if skipTypes[taskType] {
+		return
+	}
+
+	appName, _ := payload["app_name"].(string)
+	windowTitle, _ := payload["window_title"].(string)
+
+	// 如果没有指定应用名或窗口标题，不激活
+	if appName == "" && windowTitle == "" {
+		return
+	}
+
+	log("DEBUG", fmt.Sprintf("Auto-activating window before %s: app='%s', title='%s'", taskType, appName, windowTitle))
+
+	// 如果同时有应用名和窗口标题，使用精确匹配
+	if appName != "" && windowTitle != "" {
+		if err := auto.ActivateWindowByTitle(appName, windowTitle); err != nil {
+			log("WARN", fmt.Sprintf("Failed to activate window by title: %v", err))
+		}
+		return
+	}
+
+	// 只有应用名
+	if appName != "" {
+		if err := auto.ActivateWindow(appName); err != nil {
+			log("WARN", fmt.Sprintf("Failed to activate window: %v", err))
+		}
+		return
+	}
+
+	// 只有窗口标题
+	if windowTitle != "" {
+		if err := auto.ActivateWindow(windowTitle); err != nil {
+			log("WARN", fmt.Sprintf("Failed to activate window by title: %v", err))
+		}
+	}
+}
+
 // executeActivateApp 执行激活应用
 func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface{}, error) {
 	appName, _ := payload["app_name"].(string)
 	windowTitle, _ := payload["window_title"].(string)
 
+	log("DEBUG", fmt.Sprintf("executeActivateApp: app_name='%s', window_title='%s'", appName, windowTitle))
+
 	// 如果同时有应用名和窗口标题，使用精确匹配
 	if appName != "" && windowTitle != "" {
+		log("DEBUG", fmt.Sprintf("Using ActivateWindowByTitle('%s', '%s')", appName, windowTitle))
 		err := auto.ActivateWindowByTitle(appName, windowTitle)
 		if err != nil {
 			return nil, err
@@ -517,6 +572,7 @@ func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface
 
 	// 只有应用名，直接激活应用
 	if appName != "" {
+		log("DEBUG", fmt.Sprintf("Using ActivateWindow('%s')", appName))
 		err := auto.ActivateWindow(appName)
 		if err != nil {
 			return nil, err
@@ -526,6 +582,7 @@ func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface
 
 	// 只有窗口标题，尝试通过标题查找并激活
 	if windowTitle != "" {
+		log("DEBUG", fmt.Sprintf("Using ActivateWindow by title: '%s'", windowTitle))
 		err := auto.ActivateWindow(windowTitle)
 		if err != nil {
 			return nil, err
