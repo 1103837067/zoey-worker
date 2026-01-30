@@ -377,6 +377,95 @@ function updateTime() {
   els.currentTime.textContent = new Date().toLocaleTimeString('zh-CN')
 }
 
+// ========== 权限管理 (macOS) ==========
+async function checkPermissions() {
+  try {
+    const info = await window.go.main.App.GetSystemInfo()
+    // 只在 macOS 上显示权限设置
+    if (info.platform !== 'macOS') {
+      $('permissionsSection').classList.add('hidden')
+      return
+    }
+    
+    const permissions = await window.go.main.App.CheckPermissions()
+    updatePermissionsUI(permissions)
+  } catch (e) {
+    console.error('检查权限失败:', e)
+  }
+}
+
+function updatePermissionsUI(permissions) {
+  const accessibilityStatus = $('accessibilityStatus')
+  const screenRecordingStatus = $('screenRecordingStatus')
+  const openAccessibilityBtn = $('openAccessibilityBtn')
+  const openScreenRecordingBtn = $('openScreenRecordingBtn')
+  const permissionWarning = $('permissionWarning')
+  
+  // 辅助功能状态
+  if (permissions.accessibility) {
+    accessibilityStatus.innerHTML = `
+      <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+      <span class="text-sm text-green-400">已授权</span>
+    `
+    openAccessibilityBtn.classList.add('hidden')
+  } else {
+    accessibilityStatus.innerHTML = `
+      <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+      <span class="text-sm text-red-400">未授权</span>
+    `
+    openAccessibilityBtn.classList.remove('hidden')
+  }
+  
+  // 屏幕录制状态
+  if (permissions.screen_recording) {
+    screenRecordingStatus.innerHTML = `
+      <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+      <span class="text-sm text-green-400">已授权</span>
+    `
+    openScreenRecordingBtn.classList.add('hidden')
+  } else {
+    screenRecordingStatus.innerHTML = `
+      <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+      <span class="text-sm text-red-400">未授权</span>
+    `
+    openScreenRecordingBtn.classList.remove('hidden')
+  }
+  
+  // 显示警告
+  if (!permissions.all_granted) {
+    permissionWarning.classList.remove('hidden')
+  } else {
+    permissionWarning.classList.add('hidden')
+  }
+  
+  lucide.createIcons()
+}
+
+function bindPermissionEvents() {
+  const openAccessibilityBtn = $('openAccessibilityBtn')
+  const openScreenRecordingBtn = $('openScreenRecordingBtn')
+  
+  if (openAccessibilityBtn) {
+    openAccessibilityBtn.addEventListener('click', async () => {
+      try {
+        await window.go.main.App.OpenAccessibilitySettings()
+      } catch (e) {
+        console.error('打开辅助功能设置失败:', e)
+      }
+    })
+  }
+  
+  if (openScreenRecordingBtn) {
+    openScreenRecordingBtn.addEventListener('click', async () => {
+      try {
+        await window.go.main.App.OpenScreenRecordingSettings()
+      } catch (e) {
+        console.error('打开屏幕录制设置失败:', e)
+      }
+    })
+  }
+}
+
 // ========== OCR 插件管理 ==========
 async function checkOCRStatus() {
   try {
@@ -507,6 +596,10 @@ function bindOCREvents() {
 // ========== 启动 ==========
 document.addEventListener('DOMContentLoaded', () => {
   init()
+  
+  // 权限管理
+  checkPermissions()
+  bindPermissionEvents()
   
   // OCR 插件管理
   checkOCRStatus()
