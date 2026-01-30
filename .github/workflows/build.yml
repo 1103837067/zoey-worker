@@ -56,9 +56,6 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,6 +64,20 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+
+      - name: Get Go paths
+        id: go-paths
+        shell: pwsh
+        run: |
+          $goRoot = (go env GOROOT)
+          $goPath = (go env GOPATH)
+          # Convert Windows paths to MSYS2 format
+          $goRootMsys = $goRoot -replace '\\', '/' -replace '^C:', '/c'
+          $goPathMsys = $goPath -replace '\\', '/' -replace '^C:', '/c'
+          echo "GOROOT_MSYS=$goRootMsys" >> $env:GITHUB_OUTPUT
+          echo "GOPATH_MSYS=$goPathMsys" >> $env:GITHUB_OUTPUT
+          echo "Go Root: $goRoot -> $goRootMsys"
+          echo "Go Path: $goPath -> $goPathMsys"
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -83,20 +94,29 @@ jobs:
 
       - name: Build CLI
         shell: msys2 {0}
+        env:
+          GOROOT_MSYS: ${{ steps.go-paths.outputs.GOROOT_MSYS }}
+          GOPATH_MSYS: ${{ steps.go-paths.outputs.GOPATH_MSYS }}
         run: |
-          export GOROOT="/c/hostedtoolcache/windows/go/${{ env.GO_VERSION }}.x/x64"
-          export PATH="$GOROOT/bin:/mingw64/bin:$PATH"
+          export GOROOT="$GOROOT_MSYS"
+          export GOPATH="$GOPATH_MSYS"
+          export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
+          echo "Using Go: $(which go)"
+          go version
           mkdir -p dist
           go build -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
 
       - name: Build GUI
         shell: msys2 {0}
         working-directory: cmd/zoeyworker-gui
+        env:
+          GOROOT_MSYS: ${{ steps.go-paths.outputs.GOROOT_MSYS }}
+          GOPATH_MSYS: ${{ steps.go-paths.outputs.GOPATH_MSYS }}
         run: |
-          export GOROOT="/c/hostedtoolcache/windows/go/${{ env.GO_VERSION }}.x/x64"
-          export GOPATH="$HOME/go"
+          export GOROOT="$GOROOT_MSYS"
+          export GOPATH="$GOPATH_MSYS"
           export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
