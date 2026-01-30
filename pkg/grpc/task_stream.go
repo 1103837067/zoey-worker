@@ -237,7 +237,7 @@ func (h *TaskStreamHandler) handleCancelTask(cmd *pb.CancelTaskCommand) {
 			TaskResult: &pb.TaskResult{
 				TaskId:  cmd.TaskId,
 				Success: success,
-				Status:  "CANCELLED",
+				Status:  pb.TaskStatus_TASK_STATUS_CANCELLED,
 				Message: cmd.Reason,
 			},
 		},
@@ -318,7 +318,7 @@ func (h *TaskStreamHandler) SendTaskProgress(taskID string, totalSteps, complete
 }
 
 // SendTaskResult 发送任务结果
-func (h *TaskStreamHandler) SendTaskResult(taskID string, success bool, status, message, resultJSON string, durationMs int64) {
+func (h *TaskStreamHandler) SendTaskResult(taskID string, success bool, status pb.TaskStatus, message, resultJSON string, durationMs int64) {
 	msg := &pb.WorkerMessage{
 		MessageId: fmt.Sprintf("result_%d", time.Now().UnixMilli()),
 		Timestamp: time.Now().UnixMilli(),

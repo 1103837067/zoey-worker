@@ -39,32 +39,14 @@ const (
 	TaskTypeSetClipboard  = "set_clipboard"
 )
 
-// TaskStatus 任务状态
-type TaskStatus string
-
-const (
-	StatusSuccess   TaskStatus = "SUCCESS"
-	StatusFailed    TaskStatus = "FAILED"
-	StatusCancelled TaskStatus = "CANCELLED"
-	StatusTimeout   TaskStatus = "TIMEOUT"
-	StatusSkipped   TaskStatus = "SKIPPED"
-)
-
-// FailureReason 失败原因（当 status=FAILED 时）
-type FailureReason string
-
-const (
-	ReasonNotFound         FailureReason = "NOT_FOUND"         // 图像/文字/元素未找到
-	ReasonMultipleMatches  FailureReason = "MULTIPLE_MATCHES"  // 匹配到多个目标
-	ReasonAssertionFailed  FailureReason = "ASSERTION_FAILED"  // 断言失败
-	ReasonParamError       FailureReason = "PARAM_ERROR"       // 参数错误
-	ReasonSystemError      FailureReason = "SYSTEM_ERROR"      // 系统错误（权限、IO 等）
-)
+// 使用 pb 包中的枚举类型
+// TaskStatus: pb.TaskStatus_TASK_STATUS_SUCCESS, etc.
+// FailureReason: pb.FailureReason_FAILURE_REASON_NOT_FOUND, etc.
 
 // TaskError 任务错误
 type TaskError struct {
-	Status  TaskStatus
-	Reason  FailureReason
+	Status  pb.TaskStatus
+	Reason  pb.FailureReason
 	Message string
 }
 
@@ -73,7 +55,7 @@ func (e *TaskError) Error() string {
 }
 
 // newTaskError 创建任务错误
-func newTaskError(status TaskStatus, reason FailureReason, message string) *TaskError {
+func newTaskError(status pb.TaskStatus, reason pb.FailureReason, message string) *TaskError {
 	return &TaskError{Status: status, Reason: reason, Message: message}
 }
 
@@ -88,27 +70,27 @@ func classifyError(err error) *TaskError {
 	
 	// 超时单独作为状态
 	if strings.Contains(errLower, "timeout") || strings.Contains(errLower, "超时") {
-		return newTaskError(StatusTimeout, "", errStr)
+		return newTaskError(pb.TaskStatus_TASK_STATUS_TIMEOUT, pb.FailureReason_FAILURE_REASON_UNSPECIFIED, errStr)
 	}
 	
 	// 其他错误归类为 FAILED + 具体原因
-	var reason FailureReason
+	var reason pb.FailureReason
 	switch {
 	case strings.Contains(errLower, "not found") || strings.Contains(errLower, "未找到") || 
 		strings.Contains(errLower, "找不到") || strings.Contains(errLower, "匹配失败") ||
 		strings.Contains(errLower, "无法在屏幕中找到"):
-		reason = ReasonNotFound
+		reason = pb.FailureReason_FAILURE_REASON_NOT_FOUND
 	case strings.Contains(errLower, "multiple") || strings.Contains(errLower, "多个"):
-		reason = ReasonMultipleMatches
+		reason = pb.FailureReason_FAILURE_REASON_MULTIPLE_MATCHES
 	case strings.Contains(errLower, "断言") || strings.Contains(errLower, "assert"):
-		reason = ReasonAssertionFailed
+		reason = pb.FailureReason_FAILURE_REASON_ASSERTION_FAILED
 	case strings.Contains(errLower, "参数") || strings.Contains(errLower, "param") || strings.Contains(errLower, "缺少"):
-		reason = ReasonParamError
+		reason = pb.FailureReason_FAILURE_REASON_PARAM_ERROR
 	default:
-		reason = ReasonSystemError
+		reason = pb.FailureReason_FAILURE_REASON_SYSTEM_ERROR
 	}
 	
-	return newTaskError(StatusFailed, reason, errStr)
+	return newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, reason, errStr)
 }
 
 // LogFunc 日志函数类型
@@ -235,7 +217,7 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	select {
 	case <-cancelCh:
 		log("WARN", fmt.Sprintf("[Task:%s] 任务在开始前被取消", taskID))
-		e.sendTaskResultWithError(taskID, newTaskError(StatusCancelled, "", "任务在开始前被取消"), nil, startTime)
+		e.sendTaskResultWithError(taskID, newTaskError(pb.TaskStatus_TASK_STATUS_CANCELLED, pb.FailureReason_FAILURE_REASON_UNSPECIFIED, "任务在开始前被取消"), nil, startTime)
 		return
 	default:
 	}
@@ -243,7 +225,7 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	// 解析 payload
 	var payload map[string]interface{}
 	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-		taskErr := newTaskError(StatusFailed, ReasonParamError, fmt.Sprintf("解析 payload 失败: %v", err))
+		taskErr := newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, pb.FailureReason_FAILURE_REASON_PARAM_ERROR, fmt.Sprintf("解析 payload 失败: %v", err))
 		log("ERROR", fmt.Sprintf("[Task:%s] %s", taskID, taskErr.Error()))
 		e.sendTaskResultWithError(taskID, taskErr, nil, startTime)
 		return
@@ -771,11 +753,11 @@ func (e *Executor) sendTaskResultSuccess(taskID string, resultJSON string, match
 			TaskResult: &pb.TaskResult{
 				TaskId:        taskID,
 				Success:       true,
-				Status:        string(StatusSuccess),
+				Status:        pb.TaskStatus_TASK_STATUS_SUCCESS,
 				Message:       "",
 				ResultJson:    resultJSON,
 				DurationMs:    time.Since(startTime).Milliseconds(),
-				FailureReason: "",
+				FailureReason: pb.FailureReason_FAILURE_REASON_UNSPECIFIED,
 				MatchLocation: matchLoc,
 			},
 		},
@@ -797,11 +779,11 @@ func (e *Executor) sendTaskResultWithError(taskID string, taskErr *TaskError, ma
 			TaskResult: &pb.TaskResult{
 				TaskId:        taskID,
 				Success:       false,
-				Status:        string(taskErr.Status),
+				Status:        taskErr.Status,
 				Message:       taskErr.Message,
 				ResultJson:    "{}",
 				DurationMs:    time.Since(startTime).Milliseconds(),
-				FailureReason: string(taskErr.Reason),
+				FailureReason: taskErr.Reason,
 				MatchLocation: matchLoc,
 			},
 		},

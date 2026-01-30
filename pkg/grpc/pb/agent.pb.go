@@ -21,6 +21,124 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// 任务状态
+type TaskStatus int32
+
+const (
+	TaskStatus_TASK_STATUS_UNSPECIFIED TaskStatus = 0
+	TaskStatus_TASK_STATUS_SUCCESS     TaskStatus = 1 // 成功
+	TaskStatus_TASK_STATUS_FAILED      TaskStatus = 2 // 失败
+	TaskStatus_TASK_STATUS_CANCELLED   TaskStatus = 3 // 取消
+	TaskStatus_TASK_STATUS_TIMEOUT     TaskStatus = 4 // 超时
+	TaskStatus_TASK_STATUS_SKIPPED     TaskStatus = 5 // 跳过
+)
+
+// Enum value maps for TaskStatus.
+var (
+	TaskStatus_name = map[int32]string{
+		0: "TASK_STATUS_UNSPECIFIED",
+		1: "TASK_STATUS_SUCCESS",
+		2: "TASK_STATUS_FAILED",
+		3: "TASK_STATUS_CANCELLED",
+		4: "TASK_STATUS_TIMEOUT",
+		5: "TASK_STATUS_SKIPPED",
+	}
+	TaskStatus_value = map[string]int32{
+		"TASK_STATUS_UNSPECIFIED": 0,
+		"TASK_STATUS_SUCCESS":     1,
+		"TASK_STATUS_FAILED":      2,
+		"TASK_STATUS_CANCELLED":   3,
+		"TASK_STATUS_TIMEOUT":     4,
+		"TASK_STATUS_SKIPPED":     5,
+	}
+)
+
+func (x TaskStatus) Enum() *TaskStatus {
+	p := new(TaskStatus)
+	*p = x
+	return p
+}
+
+func (x TaskStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TaskStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_agent_proto_enumTypes[0].Descriptor()
+}
+
+func (TaskStatus) Type() protoreflect.EnumType {
+	return &file_agent_proto_enumTypes[0]
+}
+
+func (x TaskStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TaskStatus.Descriptor instead.
+func (TaskStatus) EnumDescriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{0}
+}
+
+// 失败原因（当 status=FAILED 时）
+type FailureReason int32
+
+const (
+	FailureReason_FAILURE_REASON_UNSPECIFIED      FailureReason = 0
+	FailureReason_FAILURE_REASON_NOT_FOUND        FailureReason = 1 // 图像/文字/元素未找到
+	FailureReason_FAILURE_REASON_MULTIPLE_MATCHES FailureReason = 2 // 匹配到多个目标
+	FailureReason_FAILURE_REASON_ASSERTION_FAILED FailureReason = 3 // 断言失败
+	FailureReason_FAILURE_REASON_PARAM_ERROR      FailureReason = 4 // 参数错误
+	FailureReason_FAILURE_REASON_SYSTEM_ERROR     FailureReason = 5 // 系统错误（权限、IO 等）
+)
+
+// Enum value maps for FailureReason.
+var (
+	FailureReason_name = map[int32]string{
+		0: "FAILURE_REASON_UNSPECIFIED",
+		1: "FAILURE_REASON_NOT_FOUND",
+		2: "FAILURE_REASON_MULTIPLE_MATCHES",
+		3: "FAILURE_REASON_ASSERTION_FAILED",
+		4: "FAILURE_REASON_PARAM_ERROR",
+		5: "FAILURE_REASON_SYSTEM_ERROR",
+	}
+	FailureReason_value = map[string]int32{
+		"FAILURE_REASON_UNSPECIFIED":      0,
+		"FAILURE_REASON_NOT_FOUND":        1,
+		"FAILURE_REASON_MULTIPLE_MATCHES": 2,
+		"FAILURE_REASON_ASSERTION_FAILED": 3,
+		"FAILURE_REASON_PARAM_ERROR":      4,
+		"FAILURE_REASON_SYSTEM_ERROR":     5,
+	}
+)
+
+func (x FailureReason) Enum() *FailureReason {
+	p := new(FailureReason)
+	*p = x
+	return p
+}
+
+func (x FailureReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FailureReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_agent_proto_enumTypes[1].Descriptor()
+}
+
+func (FailureReason) Type() protoreflect.EnumType {
+	return &file_agent_proto_enumTypes[1]
+}
+
+func (x FailureReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FailureReason.Descriptor instead.
+func (FailureReason) EnumDescriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{1}
+}
+
 type ConnectRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessKey     string                 `protobuf:"bytes,1,opt,name=access_key,json=accessKey,proto3" json:"access_key,omitempty"`
@@ -1197,23 +1315,16 @@ func (x *TaskProgress) GetStatus() string {
 }
 
 // 任务结果
-// status 枚举: SUCCESS, FAILED, CANCELLED, TIMEOUT, SKIPPED
-// failure_reason 枚举 (当 status=FAILED 时):
-//   - NOT_FOUND: 图像/文字/元素未找到
-//   - MULTIPLE_MATCHES: 匹配到多个目标
-//   - ASSERTION_FAILED: 断言失败
-//   - PARAM_ERROR: 参数错误
-//   - SYSTEM_ERROR: 系统错误（权限、IO 等）
 type TaskResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`                           // SUCCESS, FAILED, CANCELLED, TIMEOUT, SKIPPED
-	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`                         // 人类可读的消息
-	ResultJson    string                 `protobuf:"bytes,5,opt,name=result_json,json=resultJson,proto3" json:"result_json,omitempty"` // JSON 格式的结果数据
+	Status        TaskStatus             `protobuf:"varint,3,opt,name=status,proto3,enum=zoey.agent.TaskStatus" json:"status,omitempty"` // 任务状态
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`                           // 人类可读的消息
+	ResultJson    string                 `protobuf:"bytes,5,opt,name=result_json,json=resultJson,proto3" json:"result_json,omitempty"`   // JSON 格式的结果数据
 	DurationMs    int64                  `protobuf:"varint,6,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
-	FailureReason string                 `protobuf:"bytes,7,opt,name=failure_reason,json=failureReason,proto3" json:"failure_reason,omitempty"` // 失败原因码（status=FAILED 时）
-	MatchLocation *MatchLocation         `protobuf:"bytes,8,opt,name=match_location,json=matchLocation,proto3" json:"match_location,omitempty"` // 匹配位置（定位成功时）
+	FailureReason FailureReason          `protobuf:"varint,7,opt,name=failure_reason,json=failureReason,proto3,enum=zoey.agent.FailureReason" json:"failure_reason,omitempty"` // 失败原因码（status=FAILED 时）
+	MatchLocation *MatchLocation         `protobuf:"bytes,8,opt,name=match_location,json=matchLocation,proto3" json:"match_location,omitempty"`                                // 匹配位置（定位成功时）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1262,11 +1373,11 @@ func (x *TaskResult) GetSuccess() bool {
 	return false
 }
 
-func (x *TaskResult) GetStatus() string {
+func (x *TaskResult) GetStatus() TaskStatus {
 	if x != nil {
 		return x.Status
 	}
-	return ""
+	return TaskStatus_TASK_STATUS_UNSPECIFIED
 }
 
 func (x *TaskResult) GetMessage() string {
@@ -1290,11 +1401,11 @@ func (x *TaskResult) GetDurationMs() int64 {
 	return 0
 }
 
-func (x *TaskResult) GetFailureReason() string {
+func (x *TaskResult) GetFailureReason() FailureReason {
 	if x != nil {
 		return x.FailureReason
 	}
-	return ""
+	return FailureReason_FAILURE_REASON_UNSPECIFIED
 }
 
 func (x *TaskResult) GetMatchLocation() *MatchLocation {
@@ -2205,18 +2316,18 @@ const file_agent_proto_rawDesc = "" +
 	"\fpassed_steps\x18\x04 \x01(\x05R\vpassedSteps\x12!\n" +
 	"\ffailed_steps\x18\x05 \x01(\x05R\vfailedSteps\x12*\n" +
 	"\x11current_step_name\x18\x06 \x01(\tR\x0fcurrentStepName\x12\x16\n" +
-	"\x06status\x18\a \x01(\tR\x06status\"\x9c\x02\n" +
+	"\x06status\x18\a \x01(\tR\x06status\"\xcf\x02\n" +
 	"\n" +
 	"TaskResult\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x18\n" +
-	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\x12\x18\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccess\x12.\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x16.zoey.agent.TaskStatusR\x06status\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1f\n" +
 	"\vresult_json\x18\x05 \x01(\tR\n" +
 	"resultJson\x12\x1f\n" +
 	"\vduration_ms\x18\x06 \x01(\x03R\n" +
-	"durationMs\x12%\n" +
-	"\x0efailure_reason\x18\a \x01(\tR\rfailureReason\x12@\n" +
+	"durationMs\x12@\n" +
+	"\x0efailure_reason\x18\a \x01(\x0e2\x19.zoey.agent.FailureReasonR\rfailureReason\x12@\n" +
 	"\x0ematch_location\x18\b \x01(\v2\x19.zoey.agent.MatchLocationR\rmatchLocation\"y\n" +
 	"\rMatchLocation\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
@@ -2283,7 +2394,22 @@ const file_agent_proto_rawDesc = "" +
 	"is_enabled\x18\x06 \x01(\bR\tisEnabled\x12\x1d\n" +
 	"\n" +
 	"is_visible\x18\a \x01(\bR\tisVisible\x12\x14\n" +
-	"\x05value\x18\b \x01(\tR\x05value2\xdd\x03\n" +
+	"\x05value\x18\b \x01(\tR\x05value*\xa7\x01\n" +
+	"\n" +
+	"TaskStatus\x12\x1b\n" +
+	"\x17TASK_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13TASK_STATUS_SUCCESS\x10\x01\x12\x16\n" +
+	"\x12TASK_STATUS_FAILED\x10\x02\x12\x19\n" +
+	"\x15TASK_STATUS_CANCELLED\x10\x03\x12\x17\n" +
+	"\x13TASK_STATUS_TIMEOUT\x10\x04\x12\x17\n" +
+	"\x13TASK_STATUS_SKIPPED\x10\x05*\xd8\x01\n" +
+	"\rFailureReason\x12\x1e\n" +
+	"\x1aFAILURE_REASON_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18FAILURE_REASON_NOT_FOUND\x10\x01\x12#\n" +
+	"\x1fFAILURE_REASON_MULTIPLE_MATCHES\x10\x02\x12#\n" +
+	"\x1fFAILURE_REASON_ASSERTION_FAILED\x10\x03\x12\x1e\n" +
+	"\x1aFAILURE_REASON_PARAM_ERROR\x10\x04\x12\x1f\n" +
+	"\x1bFAILURE_REASON_SYSTEM_ERROR\x10\x052\xdd\x03\n" +
 	"\fAgentService\x12B\n" +
 	"\aConnect\x12\x1a.zoey.agent.ConnectRequest\x1a\x1b.zoey.agent.ConnectResponse\x12H\n" +
 	"\tHeartbeat\x12\x1c.zoey.agent.HeartbeatRequest\x1a\x1d.zoey.agent.HeartbeatResponse\x12F\n" +
@@ -2306,74 +2432,79 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
+var file_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_agent_proto_goTypes = []any{
-	(*ConnectRequest)(nil),          // 0: zoey.agent.ConnectRequest
-	(*ConnectResponse)(nil),         // 1: zoey.agent.ConnectResponse
-	(*SystemInfo)(nil),              // 2: zoey.agent.SystemInfo
-	(*HeartbeatRequest)(nil),        // 3: zoey.agent.HeartbeatRequest
-	(*HeartbeatResponse)(nil),       // 4: zoey.agent.HeartbeatResponse
-	(*ResourceInfo)(nil),            // 5: zoey.agent.ResourceInfo
-	(*AgentStatus)(nil),             // 6: zoey.agent.AgentStatus
-	(*ServerMessage)(nil),           // 7: zoey.agent.ServerMessage
-	(*WorkerMessage)(nil),           // 8: zoey.agent.WorkerMessage
-	(*DataRequest)(nil),             // 9: zoey.agent.DataRequest
-	(*DataResponse)(nil),            // 10: zoey.agent.DataResponse
-	(*ExecuteTaskCommand)(nil),      // 11: zoey.agent.ExecuteTaskCommand
-	(*CancelTaskCommand)(nil),       // 12: zoey.agent.CancelTaskCommand
-	(*PingCommand)(nil),             // 13: zoey.agent.PingCommand
-	(*TaskAck)(nil),                 // 14: zoey.agent.TaskAck
-	(*TaskProgress)(nil),            // 15: zoey.agent.TaskProgress
-	(*TaskResult)(nil),              // 16: zoey.agent.TaskResult
-	(*MatchLocation)(nil),           // 17: zoey.agent.MatchLocation
-	(*PongResponse)(nil),            // 18: zoey.agent.PongResponse
-	(*GetApplicationsRequest)(nil),  // 19: zoey.agent.GetApplicationsRequest
-	(*GetApplicationsResponse)(nil), // 20: zoey.agent.GetApplicationsResponse
-	(*ApplicationInfo)(nil),         // 21: zoey.agent.ApplicationInfo
-	(*GetWindowsRequest)(nil),       // 22: zoey.agent.GetWindowsRequest
-	(*GetWindowsResponse)(nil),      // 23: zoey.agent.GetWindowsResponse
-	(*WindowInfo)(nil),              // 24: zoey.agent.WindowInfo
-	(*RectInfo)(nil),                // 25: zoey.agent.RectInfo
-	(*GetElementsRequest)(nil),      // 26: zoey.agent.GetElementsRequest
-	(*GetElementsResponse)(nil),     // 27: zoey.agent.GetElementsResponse
-	(*ElementInfo)(nil),             // 28: zoey.agent.ElementInfo
+	(TaskStatus)(0),                 // 0: zoey.agent.TaskStatus
+	(FailureReason)(0),              // 1: zoey.agent.FailureReason
+	(*ConnectRequest)(nil),          // 2: zoey.agent.ConnectRequest
+	(*ConnectResponse)(nil),         // 3: zoey.agent.ConnectResponse
+	(*SystemInfo)(nil),              // 4: zoey.agent.SystemInfo
+	(*HeartbeatRequest)(nil),        // 5: zoey.agent.HeartbeatRequest
+	(*HeartbeatResponse)(nil),       // 6: zoey.agent.HeartbeatResponse
+	(*ResourceInfo)(nil),            // 7: zoey.agent.ResourceInfo
+	(*AgentStatus)(nil),             // 8: zoey.agent.AgentStatus
+	(*ServerMessage)(nil),           // 9: zoey.agent.ServerMessage
+	(*WorkerMessage)(nil),           // 10: zoey.agent.WorkerMessage
+	(*DataRequest)(nil),             // 11: zoey.agent.DataRequest
+	(*DataResponse)(nil),            // 12: zoey.agent.DataResponse
+	(*ExecuteTaskCommand)(nil),      // 13: zoey.agent.ExecuteTaskCommand
+	(*CancelTaskCommand)(nil),       // 14: zoey.agent.CancelTaskCommand
+	(*PingCommand)(nil),             // 15: zoey.agent.PingCommand
+	(*TaskAck)(nil),                 // 16: zoey.agent.TaskAck
+	(*TaskProgress)(nil),            // 17: zoey.agent.TaskProgress
+	(*TaskResult)(nil),              // 18: zoey.agent.TaskResult
+	(*MatchLocation)(nil),           // 19: zoey.agent.MatchLocation
+	(*PongResponse)(nil),            // 20: zoey.agent.PongResponse
+	(*GetApplicationsRequest)(nil),  // 21: zoey.agent.GetApplicationsRequest
+	(*GetApplicationsResponse)(nil), // 22: zoey.agent.GetApplicationsResponse
+	(*ApplicationInfo)(nil),         // 23: zoey.agent.ApplicationInfo
+	(*GetWindowsRequest)(nil),       // 24: zoey.agent.GetWindowsRequest
+	(*GetWindowsResponse)(nil),      // 25: zoey.agent.GetWindowsResponse
+	(*WindowInfo)(nil),              // 26: zoey.agent.WindowInfo
+	(*RectInfo)(nil),                // 27: zoey.agent.RectInfo
+	(*GetElementsRequest)(nil),      // 28: zoey.agent.GetElementsRequest
+	(*GetElementsResponse)(nil),     // 29: zoey.agent.GetElementsResponse
+	(*ElementInfo)(nil),             // 30: zoey.agent.ElementInfo
 }
 var file_agent_proto_depIdxs = []int32{
-	2,  // 0: zoey.agent.ConnectRequest.system_info:type_name -> zoey.agent.SystemInfo
-	5,  // 1: zoey.agent.HeartbeatRequest.resource_info:type_name -> zoey.agent.ResourceInfo
-	6,  // 2: zoey.agent.HeartbeatRequest.agent_status:type_name -> zoey.agent.AgentStatus
-	11, // 3: zoey.agent.ServerMessage.execute_task:type_name -> zoey.agent.ExecuteTaskCommand
-	12, // 4: zoey.agent.ServerMessage.cancel_task:type_name -> zoey.agent.CancelTaskCommand
-	13, // 5: zoey.agent.ServerMessage.ping:type_name -> zoey.agent.PingCommand
-	9,  // 6: zoey.agent.ServerMessage.data_request:type_name -> zoey.agent.DataRequest
-	14, // 7: zoey.agent.WorkerMessage.task_ack:type_name -> zoey.agent.TaskAck
-	15, // 8: zoey.agent.WorkerMessage.task_progress:type_name -> zoey.agent.TaskProgress
-	16, // 9: zoey.agent.WorkerMessage.task_result:type_name -> zoey.agent.TaskResult
-	18, // 10: zoey.agent.WorkerMessage.pong:type_name -> zoey.agent.PongResponse
-	10, // 11: zoey.agent.WorkerMessage.data_response:type_name -> zoey.agent.DataResponse
-	17, // 12: zoey.agent.TaskResult.match_location:type_name -> zoey.agent.MatchLocation
-	21, // 13: zoey.agent.GetApplicationsResponse.applications:type_name -> zoey.agent.ApplicationInfo
-	24, // 14: zoey.agent.GetWindowsResponse.windows:type_name -> zoey.agent.WindowInfo
-	25, // 15: zoey.agent.WindowInfo.rect:type_name -> zoey.agent.RectInfo
-	28, // 16: zoey.agent.GetElementsResponse.elements:type_name -> zoey.agent.ElementInfo
-	25, // 17: zoey.agent.ElementInfo.rect:type_name -> zoey.agent.RectInfo
-	0,  // 18: zoey.agent.AgentService.Connect:input_type -> zoey.agent.ConnectRequest
-	3,  // 19: zoey.agent.AgentService.Heartbeat:input_type -> zoey.agent.HeartbeatRequest
-	8,  // 20: zoey.agent.AgentService.TaskStream:input_type -> zoey.agent.WorkerMessage
-	19, // 21: zoey.agent.AgentService.GetApplications:input_type -> zoey.agent.GetApplicationsRequest
-	22, // 22: zoey.agent.AgentService.GetWindows:input_type -> zoey.agent.GetWindowsRequest
-	26, // 23: zoey.agent.AgentService.GetElements:input_type -> zoey.agent.GetElementsRequest
-	1,  // 24: zoey.agent.AgentService.Connect:output_type -> zoey.agent.ConnectResponse
-	4,  // 25: zoey.agent.AgentService.Heartbeat:output_type -> zoey.agent.HeartbeatResponse
-	7,  // 26: zoey.agent.AgentService.TaskStream:output_type -> zoey.agent.ServerMessage
-	20, // 27: zoey.agent.AgentService.GetApplications:output_type -> zoey.agent.GetApplicationsResponse
-	23, // 28: zoey.agent.AgentService.GetWindows:output_type -> zoey.agent.GetWindowsResponse
-	27, // 29: zoey.agent.AgentService.GetElements:output_type -> zoey.agent.GetElementsResponse
-	24, // [24:30] is the sub-list for method output_type
-	18, // [18:24] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	4,  // 0: zoey.agent.ConnectRequest.system_info:type_name -> zoey.agent.SystemInfo
+	7,  // 1: zoey.agent.HeartbeatRequest.resource_info:type_name -> zoey.agent.ResourceInfo
+	8,  // 2: zoey.agent.HeartbeatRequest.agent_status:type_name -> zoey.agent.AgentStatus
+	13, // 3: zoey.agent.ServerMessage.execute_task:type_name -> zoey.agent.ExecuteTaskCommand
+	14, // 4: zoey.agent.ServerMessage.cancel_task:type_name -> zoey.agent.CancelTaskCommand
+	15, // 5: zoey.agent.ServerMessage.ping:type_name -> zoey.agent.PingCommand
+	11, // 6: zoey.agent.ServerMessage.data_request:type_name -> zoey.agent.DataRequest
+	16, // 7: zoey.agent.WorkerMessage.task_ack:type_name -> zoey.agent.TaskAck
+	17, // 8: zoey.agent.WorkerMessage.task_progress:type_name -> zoey.agent.TaskProgress
+	18, // 9: zoey.agent.WorkerMessage.task_result:type_name -> zoey.agent.TaskResult
+	20, // 10: zoey.agent.WorkerMessage.pong:type_name -> zoey.agent.PongResponse
+	12, // 11: zoey.agent.WorkerMessage.data_response:type_name -> zoey.agent.DataResponse
+	0,  // 12: zoey.agent.TaskResult.status:type_name -> zoey.agent.TaskStatus
+	1,  // 13: zoey.agent.TaskResult.failure_reason:type_name -> zoey.agent.FailureReason
+	19, // 14: zoey.agent.TaskResult.match_location:type_name -> zoey.agent.MatchLocation
+	23, // 15: zoey.agent.GetApplicationsResponse.applications:type_name -> zoey.agent.ApplicationInfo
+	26, // 16: zoey.agent.GetWindowsResponse.windows:type_name -> zoey.agent.WindowInfo
+	27, // 17: zoey.agent.WindowInfo.rect:type_name -> zoey.agent.RectInfo
+	30, // 18: zoey.agent.GetElementsResponse.elements:type_name -> zoey.agent.ElementInfo
+	27, // 19: zoey.agent.ElementInfo.rect:type_name -> zoey.agent.RectInfo
+	2,  // 20: zoey.agent.AgentService.Connect:input_type -> zoey.agent.ConnectRequest
+	5,  // 21: zoey.agent.AgentService.Heartbeat:input_type -> zoey.agent.HeartbeatRequest
+	10, // 22: zoey.agent.AgentService.TaskStream:input_type -> zoey.agent.WorkerMessage
+	21, // 23: zoey.agent.AgentService.GetApplications:input_type -> zoey.agent.GetApplicationsRequest
+	24, // 24: zoey.agent.AgentService.GetWindows:input_type -> zoey.agent.GetWindowsRequest
+	28, // 25: zoey.agent.AgentService.GetElements:input_type -> zoey.agent.GetElementsRequest
+	3,  // 26: zoey.agent.AgentService.Connect:output_type -> zoey.agent.ConnectResponse
+	6,  // 27: zoey.agent.AgentService.Heartbeat:output_type -> zoey.agent.HeartbeatResponse
+	9,  // 28: zoey.agent.AgentService.TaskStream:output_type -> zoey.agent.ServerMessage
+	22, // 29: zoey.agent.AgentService.GetApplications:output_type -> zoey.agent.GetApplicationsResponse
+	25, // 30: zoey.agent.AgentService.GetWindows:output_type -> zoey.agent.GetWindowsResponse
+	29, // 31: zoey.agent.AgentService.GetElements:output_type -> zoey.agent.GetElementsResponse
+	26, // [26:32] is the sub-list for method output_type
+	20, // [20:26] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -2399,13 +2530,14 @@ func file_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      2,
 			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_agent_proto_goTypes,
 		DependencyIndexes: file_agent_proto_depIdxs,
+		EnumInfos:         file_agent_proto_enumTypes,
 		MessageInfos:      file_agent_proto_msgTypes,
 	}.Build()
 	File_agent_proto = out.File
