@@ -230,6 +230,7 @@ type HeartbeatRequest struct {
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	Timestamp     int64                  `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	ResourceInfo  *ResourceInfo          `protobuf:"bytes,3,opt,name=resource_info,json=resourceInfo,proto3" json:"resource_info,omitempty"`
+	AgentStatus   *AgentStatus           `protobuf:"bytes,4,opt,name=agent_status,json=agentStatus,proto3" json:"agent_status,omitempty"` // Agent 执行状态
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -281,6 +282,13 @@ func (x *HeartbeatRequest) GetTimestamp() int64 {
 func (x *HeartbeatRequest) GetResourceInfo() *ResourceInfo {
 	if x != nil {
 		return x.ResourceInfo
+	}
+	return nil
+}
+
+func (x *HeartbeatRequest) GetAgentStatus() *AgentStatus {
+	if x != nil {
+		return x.AgentStatus
 	}
 	return nil
 }
@@ -397,6 +405,83 @@ func (x *ResourceInfo) GetDiskUsage() float32 {
 	return 0
 }
 
+// Agent 执行状态
+type AgentStatus struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Status            string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                                   // IDLE, BUSY, PAUSED
+	CurrentTaskId     string                 `protobuf:"bytes,2,opt,name=current_task_id,json=currentTaskId,proto3" json:"current_task_id,omitempty"`              // 当前执行的任务 ID（空表示空闲）
+	CurrentTaskType   string                 `protobuf:"bytes,3,opt,name=current_task_type,json=currentTaskType,proto3" json:"current_task_type,omitempty"`        // 当前任务类型
+	TaskStartedAt     int64                  `protobuf:"varint,4,opt,name=task_started_at,json=taskStartedAt,proto3" json:"task_started_at,omitempty"`             // 任务开始时间戳
+	RunningTasksCount int32                  `protobuf:"varint,5,opt,name=running_tasks_count,json=runningTasksCount,proto3" json:"running_tasks_count,omitempty"` // 运行中的任务数量
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AgentStatus) Reset() {
+	*x = AgentStatus{}
+	mi := &file_agent_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentStatus) ProtoMessage() {}
+
+func (x *AgentStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentStatus.ProtoReflect.Descriptor instead.
+func (*AgentStatus) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *AgentStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AgentStatus) GetCurrentTaskId() string {
+	if x != nil {
+		return x.CurrentTaskId
+	}
+	return ""
+}
+
+func (x *AgentStatus) GetCurrentTaskType() string {
+	if x != nil {
+		return x.CurrentTaskType
+	}
+	return ""
+}
+
+func (x *AgentStatus) GetTaskStartedAt() int64 {
+	if x != nil {
+		return x.TaskStartedAt
+	}
+	return 0
+}
+
+func (x *AgentStatus) GetRunningTasksCount() int32 {
+	if x != nil {
+		return x.RunningTasksCount
+	}
+	return 0
+}
+
 // 服务端 -> Worker 消息
 type ServerMessage struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
@@ -415,7 +500,7 @@ type ServerMessage struct {
 
 func (x *ServerMessage) Reset() {
 	*x = ServerMessage{}
-	mi := &file_agent_proto_msgTypes[6]
+	mi := &file_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -427,7 +512,7 @@ func (x *ServerMessage) String() string {
 func (*ServerMessage) ProtoMessage() {}
 
 func (x *ServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[6]
+	mi := &file_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,7 +525,7 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
 func (*ServerMessage) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{6}
+	return file_agent_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ServerMessage) GetMessageId() string {
@@ -548,7 +633,7 @@ type WorkerMessage struct {
 
 func (x *WorkerMessage) Reset() {
 	*x = WorkerMessage{}
-	mi := &file_agent_proto_msgTypes[7]
+	mi := &file_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -560,7 +645,7 @@ func (x *WorkerMessage) String() string {
 func (*WorkerMessage) ProtoMessage() {}
 
 func (x *WorkerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[7]
+	mi := &file_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -573,7 +658,7 @@ func (x *WorkerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerMessage.ProtoReflect.Descriptor instead.
 func (*WorkerMessage) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{7}
+	return file_agent_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *WorkerMessage) GetMessageId() string {
@@ -693,7 +778,7 @@ type DataRequest struct {
 
 func (x *DataRequest) Reset() {
 	*x = DataRequest{}
-	mi := &file_agent_proto_msgTypes[8]
+	mi := &file_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -705,7 +790,7 @@ func (x *DataRequest) String() string {
 func (*DataRequest) ProtoMessage() {}
 
 func (x *DataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[8]
+	mi := &file_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -718,7 +803,7 @@ func (x *DataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataRequest.ProtoReflect.Descriptor instead.
 func (*DataRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{8}
+	return file_agent_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DataRequest) GetRequestType() string {
@@ -747,7 +832,7 @@ type DataResponse struct {
 
 func (x *DataResponse) Reset() {
 	*x = DataResponse{}
-	mi := &file_agent_proto_msgTypes[9]
+	mi := &file_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -759,7 +844,7 @@ func (x *DataResponse) String() string {
 func (*DataResponse) ProtoMessage() {}
 
 func (x *DataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[9]
+	mi := &file_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -772,7 +857,7 @@ func (x *DataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataResponse.ProtoReflect.Descriptor instead.
 func (*DataResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{9}
+	return file_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DataResponse) GetRequestType() string {
@@ -814,7 +899,7 @@ type ExecuteTaskCommand struct {
 
 func (x *ExecuteTaskCommand) Reset() {
 	*x = ExecuteTaskCommand{}
-	mi := &file_agent_proto_msgTypes[10]
+	mi := &file_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -826,7 +911,7 @@ func (x *ExecuteTaskCommand) String() string {
 func (*ExecuteTaskCommand) ProtoMessage() {}
 
 func (x *ExecuteTaskCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[10]
+	mi := &file_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -839,7 +924,7 @@ func (x *ExecuteTaskCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecuteTaskCommand.ProtoReflect.Descriptor instead.
 func (*ExecuteTaskCommand) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{10}
+	return file_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ExecuteTaskCommand) GetTaskId() string {
@@ -873,7 +958,7 @@ type CancelTaskCommand struct {
 
 func (x *CancelTaskCommand) Reset() {
 	*x = CancelTaskCommand{}
-	mi := &file_agent_proto_msgTypes[11]
+	mi := &file_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -885,7 +970,7 @@ func (x *CancelTaskCommand) String() string {
 func (*CancelTaskCommand) ProtoMessage() {}
 
 func (x *CancelTaskCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[11]
+	mi := &file_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -898,7 +983,7 @@ func (x *CancelTaskCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskCommand.ProtoReflect.Descriptor instead.
 func (*CancelTaskCommand) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{11}
+	return file_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CancelTaskCommand) GetTaskId() string {
@@ -924,7 +1009,7 @@ type PingCommand struct {
 
 func (x *PingCommand) Reset() {
 	*x = PingCommand{}
-	mi := &file_agent_proto_msgTypes[12]
+	mi := &file_agent_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -936,7 +1021,7 @@ func (x *PingCommand) String() string {
 func (*PingCommand) ProtoMessage() {}
 
 func (x *PingCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[12]
+	mi := &file_agent_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -949,7 +1034,7 @@ func (x *PingCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingCommand.ProtoReflect.Descriptor instead.
 func (*PingCommand) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{12}
+	return file_agent_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PingCommand) GetTimestamp() int64 {
@@ -970,7 +1055,7 @@ type TaskAck struct {
 
 func (x *TaskAck) Reset() {
 	*x = TaskAck{}
-	mi := &file_agent_proto_msgTypes[13]
+	mi := &file_agent_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -982,7 +1067,7 @@ func (x *TaskAck) String() string {
 func (*TaskAck) ProtoMessage() {}
 
 func (x *TaskAck) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[13]
+	mi := &file_agent_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -995,7 +1080,7 @@ func (x *TaskAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskAck.ProtoReflect.Descriptor instead.
 func (*TaskAck) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{13}
+	return file_agent_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TaskAck) GetTaskId() string {
@@ -1034,7 +1119,7 @@ type TaskProgress struct {
 
 func (x *TaskProgress) Reset() {
 	*x = TaskProgress{}
-	mi := &file_agent_proto_msgTypes[14]
+	mi := &file_agent_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1046,7 +1131,7 @@ func (x *TaskProgress) String() string {
 func (*TaskProgress) ProtoMessage() {}
 
 func (x *TaskProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[14]
+	mi := &file_agent_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1059,7 +1144,7 @@ func (x *TaskProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskProgress.ProtoReflect.Descriptor instead.
 func (*TaskProgress) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{14}
+	return file_agent_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *TaskProgress) GetTaskId() string {
@@ -1125,7 +1210,7 @@ type TaskResult struct {
 
 func (x *TaskResult) Reset() {
 	*x = TaskResult{}
-	mi := &file_agent_proto_msgTypes[15]
+	mi := &file_agent_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1137,7 +1222,7 @@ func (x *TaskResult) String() string {
 func (*TaskResult) ProtoMessage() {}
 
 func (x *TaskResult) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[15]
+	mi := &file_agent_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1150,7 +1235,7 @@ func (x *TaskResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskResult.ProtoReflect.Descriptor instead.
 func (*TaskResult) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{15}
+	return file_agent_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TaskResult) GetTaskId() string {
@@ -1205,7 +1290,7 @@ type PongResponse struct {
 
 func (x *PongResponse) Reset() {
 	*x = PongResponse{}
-	mi := &file_agent_proto_msgTypes[16]
+	mi := &file_agent_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1217,7 +1302,7 @@ func (x *PongResponse) String() string {
 func (*PongResponse) ProtoMessage() {}
 
 func (x *PongResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[16]
+	mi := &file_agent_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1230,7 +1315,7 @@ func (x *PongResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PongResponse.ProtoReflect.Descriptor instead.
 func (*PongResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{16}
+	return file_agent_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PongResponse) GetClientTimestamp() int64 {
@@ -1256,7 +1341,7 @@ type GetApplicationsRequest struct {
 
 func (x *GetApplicationsRequest) Reset() {
 	*x = GetApplicationsRequest{}
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_agent_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1268,7 +1353,7 @@ func (x *GetApplicationsRequest) String() string {
 func (*GetApplicationsRequest) ProtoMessage() {}
 
 func (x *GetApplicationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[17]
+	mi := &file_agent_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1281,7 +1366,7 @@ func (x *GetApplicationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetApplicationsRequest.ProtoReflect.Descriptor instead.
 func (*GetApplicationsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{17}
+	return file_agent_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetApplicationsRequest) GetAgentId() string {
@@ -1302,7 +1387,7 @@ type GetApplicationsResponse struct {
 
 func (x *GetApplicationsResponse) Reset() {
 	*x = GetApplicationsResponse{}
-	mi := &file_agent_proto_msgTypes[18]
+	mi := &file_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1314,7 +1399,7 @@ func (x *GetApplicationsResponse) String() string {
 func (*GetApplicationsResponse) ProtoMessage() {}
 
 func (x *GetApplicationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[18]
+	mi := &file_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1327,7 +1412,7 @@ func (x *GetApplicationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetApplicationsResponse.ProtoReflect.Descriptor instead.
 func (*GetApplicationsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{18}
+	return file_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetApplicationsResponse) GetSuccess() bool {
@@ -1363,7 +1448,7 @@ type ApplicationInfo struct {
 
 func (x *ApplicationInfo) Reset() {
 	*x = ApplicationInfo{}
-	mi := &file_agent_proto_msgTypes[19]
+	mi := &file_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1375,7 +1460,7 @@ func (x *ApplicationInfo) String() string {
 func (*ApplicationInfo) ProtoMessage() {}
 
 func (x *ApplicationInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[19]
+	mi := &file_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1388,7 +1473,7 @@ func (x *ApplicationInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplicationInfo.ProtoReflect.Descriptor instead.
 func (*ApplicationInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{19}
+	return file_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ApplicationInfo) GetPid() int32 {
@@ -1430,7 +1515,7 @@ type GetWindowsRequest struct {
 
 func (x *GetWindowsRequest) Reset() {
 	*x = GetWindowsRequest{}
-	mi := &file_agent_proto_msgTypes[20]
+	mi := &file_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1442,7 +1527,7 @@ func (x *GetWindowsRequest) String() string {
 func (*GetWindowsRequest) ProtoMessage() {}
 
 func (x *GetWindowsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[20]
+	mi := &file_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1455,7 +1540,7 @@ func (x *GetWindowsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWindowsRequest.ProtoReflect.Descriptor instead.
 func (*GetWindowsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{20}
+	return file_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetWindowsRequest) GetAgentId() string {
@@ -1490,7 +1575,7 @@ type GetWindowsResponse struct {
 
 func (x *GetWindowsResponse) Reset() {
 	*x = GetWindowsResponse{}
-	mi := &file_agent_proto_msgTypes[21]
+	mi := &file_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1502,7 +1587,7 @@ func (x *GetWindowsResponse) String() string {
 func (*GetWindowsResponse) ProtoMessage() {}
 
 func (x *GetWindowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[21]
+	mi := &file_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1515,7 +1600,7 @@ func (x *GetWindowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWindowsResponse.ProtoReflect.Descriptor instead.
 func (*GetWindowsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{21}
+	return file_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetWindowsResponse) GetSuccess() bool {
@@ -1553,7 +1638,7 @@ type WindowInfo struct {
 
 func (x *WindowInfo) Reset() {
 	*x = WindowInfo{}
-	mi := &file_agent_proto_msgTypes[22]
+	mi := &file_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1565,7 +1650,7 @@ func (x *WindowInfo) String() string {
 func (*WindowInfo) ProtoMessage() {}
 
 func (x *WindowInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[22]
+	mi := &file_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1578,7 +1663,7 @@ func (x *WindowInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WindowInfo.ProtoReflect.Descriptor instead.
 func (*WindowInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{22}
+	return file_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *WindowInfo) GetHandle() int64 {
@@ -1635,7 +1720,7 @@ type RectInfo struct {
 
 func (x *RectInfo) Reset() {
 	*x = RectInfo{}
-	mi := &file_agent_proto_msgTypes[23]
+	mi := &file_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1647,7 +1732,7 @@ func (x *RectInfo) String() string {
 func (*RectInfo) ProtoMessage() {}
 
 func (x *RectInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[23]
+	mi := &file_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1660,7 +1745,7 @@ func (x *RectInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RectInfo.ProtoReflect.Descriptor instead.
 func (*RectInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{23}
+	return file_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *RectInfo) GetX() int32 {
@@ -1703,7 +1788,7 @@ type GetElementsRequest struct {
 
 func (x *GetElementsRequest) Reset() {
 	*x = GetElementsRequest{}
-	mi := &file_agent_proto_msgTypes[24]
+	mi := &file_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1715,7 +1800,7 @@ func (x *GetElementsRequest) String() string {
 func (*GetElementsRequest) ProtoMessage() {}
 
 func (x *GetElementsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[24]
+	mi := &file_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1728,7 +1813,7 @@ func (x *GetElementsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetElementsRequest.ProtoReflect.Descriptor instead.
 func (*GetElementsRequest) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{24}
+	return file_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetElementsRequest) GetAgentId() string {
@@ -1770,7 +1855,7 @@ type GetElementsResponse struct {
 
 func (x *GetElementsResponse) Reset() {
 	*x = GetElementsResponse{}
-	mi := &file_agent_proto_msgTypes[25]
+	mi := &file_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1782,7 +1867,7 @@ func (x *GetElementsResponse) String() string {
 func (*GetElementsResponse) ProtoMessage() {}
 
 func (x *GetElementsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[25]
+	mi := &file_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1795,7 +1880,7 @@ func (x *GetElementsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetElementsResponse.ProtoReflect.Descriptor instead.
 func (*GetElementsResponse) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{25}
+	return file_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GetElementsResponse) GetSuccess() bool {
@@ -1835,7 +1920,7 @@ type ElementInfo struct {
 
 func (x *ElementInfo) Reset() {
 	*x = ElementInfo{}
-	mi := &file_agent_proto_msgTypes[26]
+	mi := &file_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1847,7 +1932,7 @@ func (x *ElementInfo) String() string {
 func (*ElementInfo) ProtoMessage() {}
 
 func (x *ElementInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[26]
+	mi := &file_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1860,7 +1945,7 @@ func (x *ElementInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ElementInfo.ProtoReflect.Descriptor instead.
 func (*ElementInfo) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{26}
+	return file_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ElementInfo) GetAutomationId() string {
@@ -1946,11 +2031,12 @@ const file_agent_proto_rawDesc = "" +
 	"os_version\x18\x03 \x01(\tR\tosVersion\x12#\n" +
 	"\ragent_version\x18\x04 \x01(\tR\fagentVersion\x12\x1d\n" +
 	"\n" +
-	"ip_address\x18\x05 \x01(\tR\tipAddress\"\x8a\x01\n" +
+	"ip_address\x18\x05 \x01(\tR\tipAddress\"\xc6\x01\n" +
 	"\x10HeartbeatRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x12=\n" +
-	"\rresource_info\x18\x03 \x01(\v2\x18.zoey.agent.ResourceInfoR\fresourceInfo\"X\n" +
+	"\rresource_info\x18\x03 \x01(\v2\x18.zoey.agent.ResourceInfoR\fresourceInfo\x12:\n" +
+	"\fagent_status\x18\x04 \x01(\v2\x17.zoey.agent.AgentStatusR\vagentStatus\"X\n" +
 	"\x11HeartbeatResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12)\n" +
 	"\x10server_timestamp\x18\x02 \x01(\x03R\x0fserverTimestamp\"m\n" +
@@ -1958,7 +2044,13 @@ const file_agent_proto_rawDesc = "" +
 	"\tcpu_usage\x18\x01 \x01(\x02R\bcpuUsage\x12!\n" +
 	"\fmemory_usage\x18\x02 \x01(\x02R\vmemoryUsage\x12\x1d\n" +
 	"\n" +
-	"disk_usage\x18\x03 \x01(\x02R\tdiskUsage\"\xcb\x02\n" +
+	"disk_usage\x18\x03 \x01(\x02R\tdiskUsage\"\xd1\x01\n" +
+	"\vAgentStatus\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12&\n" +
+	"\x0fcurrent_task_id\x18\x02 \x01(\tR\rcurrentTaskId\x12*\n" +
+	"\x11current_task_type\x18\x03 \x01(\tR\x0fcurrentTaskType\x12&\n" +
+	"\x0ftask_started_at\x18\x04 \x01(\x03R\rtaskStartedAt\x12.\n" +
+	"\x13running_tasks_count\x18\x05 \x01(\x05R\x11runningTasksCount\"\xcb\x02\n" +
 	"\rServerMessage\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tR\tmessageId\x12\x1c\n" +
@@ -2103,7 +2195,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_agent_proto_goTypes = []any{
 	(*ConnectRequest)(nil),          // 0: zoey.agent.ConnectRequest
 	(*ConnectResponse)(nil),         // 1: zoey.agent.ConnectResponse
@@ -2111,62 +2203,64 @@ var file_agent_proto_goTypes = []any{
 	(*HeartbeatRequest)(nil),        // 3: zoey.agent.HeartbeatRequest
 	(*HeartbeatResponse)(nil),       // 4: zoey.agent.HeartbeatResponse
 	(*ResourceInfo)(nil),            // 5: zoey.agent.ResourceInfo
-	(*ServerMessage)(nil),           // 6: zoey.agent.ServerMessage
-	(*WorkerMessage)(nil),           // 7: zoey.agent.WorkerMessage
-	(*DataRequest)(nil),             // 8: zoey.agent.DataRequest
-	(*DataResponse)(nil),            // 9: zoey.agent.DataResponse
-	(*ExecuteTaskCommand)(nil),      // 10: zoey.agent.ExecuteTaskCommand
-	(*CancelTaskCommand)(nil),       // 11: zoey.agent.CancelTaskCommand
-	(*PingCommand)(nil),             // 12: zoey.agent.PingCommand
-	(*TaskAck)(nil),                 // 13: zoey.agent.TaskAck
-	(*TaskProgress)(nil),            // 14: zoey.agent.TaskProgress
-	(*TaskResult)(nil),              // 15: zoey.agent.TaskResult
-	(*PongResponse)(nil),            // 16: zoey.agent.PongResponse
-	(*GetApplicationsRequest)(nil),  // 17: zoey.agent.GetApplicationsRequest
-	(*GetApplicationsResponse)(nil), // 18: zoey.agent.GetApplicationsResponse
-	(*ApplicationInfo)(nil),         // 19: zoey.agent.ApplicationInfo
-	(*GetWindowsRequest)(nil),       // 20: zoey.agent.GetWindowsRequest
-	(*GetWindowsResponse)(nil),      // 21: zoey.agent.GetWindowsResponse
-	(*WindowInfo)(nil),              // 22: zoey.agent.WindowInfo
-	(*RectInfo)(nil),                // 23: zoey.agent.RectInfo
-	(*GetElementsRequest)(nil),      // 24: zoey.agent.GetElementsRequest
-	(*GetElementsResponse)(nil),     // 25: zoey.agent.GetElementsResponse
-	(*ElementInfo)(nil),             // 26: zoey.agent.ElementInfo
+	(*AgentStatus)(nil),             // 6: zoey.agent.AgentStatus
+	(*ServerMessage)(nil),           // 7: zoey.agent.ServerMessage
+	(*WorkerMessage)(nil),           // 8: zoey.agent.WorkerMessage
+	(*DataRequest)(nil),             // 9: zoey.agent.DataRequest
+	(*DataResponse)(nil),            // 10: zoey.agent.DataResponse
+	(*ExecuteTaskCommand)(nil),      // 11: zoey.agent.ExecuteTaskCommand
+	(*CancelTaskCommand)(nil),       // 12: zoey.agent.CancelTaskCommand
+	(*PingCommand)(nil),             // 13: zoey.agent.PingCommand
+	(*TaskAck)(nil),                 // 14: zoey.agent.TaskAck
+	(*TaskProgress)(nil),            // 15: zoey.agent.TaskProgress
+	(*TaskResult)(nil),              // 16: zoey.agent.TaskResult
+	(*PongResponse)(nil),            // 17: zoey.agent.PongResponse
+	(*GetApplicationsRequest)(nil),  // 18: zoey.agent.GetApplicationsRequest
+	(*GetApplicationsResponse)(nil), // 19: zoey.agent.GetApplicationsResponse
+	(*ApplicationInfo)(nil),         // 20: zoey.agent.ApplicationInfo
+	(*GetWindowsRequest)(nil),       // 21: zoey.agent.GetWindowsRequest
+	(*GetWindowsResponse)(nil),      // 22: zoey.agent.GetWindowsResponse
+	(*WindowInfo)(nil),              // 23: zoey.agent.WindowInfo
+	(*RectInfo)(nil),                // 24: zoey.agent.RectInfo
+	(*GetElementsRequest)(nil),      // 25: zoey.agent.GetElementsRequest
+	(*GetElementsResponse)(nil),     // 26: zoey.agent.GetElementsResponse
+	(*ElementInfo)(nil),             // 27: zoey.agent.ElementInfo
 }
 var file_agent_proto_depIdxs = []int32{
 	2,  // 0: zoey.agent.ConnectRequest.system_info:type_name -> zoey.agent.SystemInfo
 	5,  // 1: zoey.agent.HeartbeatRequest.resource_info:type_name -> zoey.agent.ResourceInfo
-	10, // 2: zoey.agent.ServerMessage.execute_task:type_name -> zoey.agent.ExecuteTaskCommand
-	11, // 3: zoey.agent.ServerMessage.cancel_task:type_name -> zoey.agent.CancelTaskCommand
-	12, // 4: zoey.agent.ServerMessage.ping:type_name -> zoey.agent.PingCommand
-	8,  // 5: zoey.agent.ServerMessage.data_request:type_name -> zoey.agent.DataRequest
-	13, // 6: zoey.agent.WorkerMessage.task_ack:type_name -> zoey.agent.TaskAck
-	14, // 7: zoey.agent.WorkerMessage.task_progress:type_name -> zoey.agent.TaskProgress
-	15, // 8: zoey.agent.WorkerMessage.task_result:type_name -> zoey.agent.TaskResult
-	16, // 9: zoey.agent.WorkerMessage.pong:type_name -> zoey.agent.PongResponse
-	9,  // 10: zoey.agent.WorkerMessage.data_response:type_name -> zoey.agent.DataResponse
-	19, // 11: zoey.agent.GetApplicationsResponse.applications:type_name -> zoey.agent.ApplicationInfo
-	22, // 12: zoey.agent.GetWindowsResponse.windows:type_name -> zoey.agent.WindowInfo
-	23, // 13: zoey.agent.WindowInfo.rect:type_name -> zoey.agent.RectInfo
-	26, // 14: zoey.agent.GetElementsResponse.elements:type_name -> zoey.agent.ElementInfo
-	23, // 15: zoey.agent.ElementInfo.rect:type_name -> zoey.agent.RectInfo
-	0,  // 16: zoey.agent.AgentService.Connect:input_type -> zoey.agent.ConnectRequest
-	3,  // 17: zoey.agent.AgentService.Heartbeat:input_type -> zoey.agent.HeartbeatRequest
-	7,  // 18: zoey.agent.AgentService.TaskStream:input_type -> zoey.agent.WorkerMessage
-	17, // 19: zoey.agent.AgentService.GetApplications:input_type -> zoey.agent.GetApplicationsRequest
-	20, // 20: zoey.agent.AgentService.GetWindows:input_type -> zoey.agent.GetWindowsRequest
-	24, // 21: zoey.agent.AgentService.GetElements:input_type -> zoey.agent.GetElementsRequest
-	1,  // 22: zoey.agent.AgentService.Connect:output_type -> zoey.agent.ConnectResponse
-	4,  // 23: zoey.agent.AgentService.Heartbeat:output_type -> zoey.agent.HeartbeatResponse
-	6,  // 24: zoey.agent.AgentService.TaskStream:output_type -> zoey.agent.ServerMessage
-	18, // 25: zoey.agent.AgentService.GetApplications:output_type -> zoey.agent.GetApplicationsResponse
-	21, // 26: zoey.agent.AgentService.GetWindows:output_type -> zoey.agent.GetWindowsResponse
-	25, // 27: zoey.agent.AgentService.GetElements:output_type -> zoey.agent.GetElementsResponse
-	22, // [22:28] is the sub-list for method output_type
-	16, // [16:22] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	6,  // 2: zoey.agent.HeartbeatRequest.agent_status:type_name -> zoey.agent.AgentStatus
+	11, // 3: zoey.agent.ServerMessage.execute_task:type_name -> zoey.agent.ExecuteTaskCommand
+	12, // 4: zoey.agent.ServerMessage.cancel_task:type_name -> zoey.agent.CancelTaskCommand
+	13, // 5: zoey.agent.ServerMessage.ping:type_name -> zoey.agent.PingCommand
+	9,  // 6: zoey.agent.ServerMessage.data_request:type_name -> zoey.agent.DataRequest
+	14, // 7: zoey.agent.WorkerMessage.task_ack:type_name -> zoey.agent.TaskAck
+	15, // 8: zoey.agent.WorkerMessage.task_progress:type_name -> zoey.agent.TaskProgress
+	16, // 9: zoey.agent.WorkerMessage.task_result:type_name -> zoey.agent.TaskResult
+	17, // 10: zoey.agent.WorkerMessage.pong:type_name -> zoey.agent.PongResponse
+	10, // 11: zoey.agent.WorkerMessage.data_response:type_name -> zoey.agent.DataResponse
+	20, // 12: zoey.agent.GetApplicationsResponse.applications:type_name -> zoey.agent.ApplicationInfo
+	23, // 13: zoey.agent.GetWindowsResponse.windows:type_name -> zoey.agent.WindowInfo
+	24, // 14: zoey.agent.WindowInfo.rect:type_name -> zoey.agent.RectInfo
+	27, // 15: zoey.agent.GetElementsResponse.elements:type_name -> zoey.agent.ElementInfo
+	24, // 16: zoey.agent.ElementInfo.rect:type_name -> zoey.agent.RectInfo
+	0,  // 17: zoey.agent.AgentService.Connect:input_type -> zoey.agent.ConnectRequest
+	3,  // 18: zoey.agent.AgentService.Heartbeat:input_type -> zoey.agent.HeartbeatRequest
+	8,  // 19: zoey.agent.AgentService.TaskStream:input_type -> zoey.agent.WorkerMessage
+	18, // 20: zoey.agent.AgentService.GetApplications:input_type -> zoey.agent.GetApplicationsRequest
+	21, // 21: zoey.agent.AgentService.GetWindows:input_type -> zoey.agent.GetWindowsRequest
+	25, // 22: zoey.agent.AgentService.GetElements:input_type -> zoey.agent.GetElementsRequest
+	1,  // 23: zoey.agent.AgentService.Connect:output_type -> zoey.agent.ConnectResponse
+	4,  // 24: zoey.agent.AgentService.Heartbeat:output_type -> zoey.agent.HeartbeatResponse
+	7,  // 25: zoey.agent.AgentService.TaskStream:output_type -> zoey.agent.ServerMessage
+	19, // 26: zoey.agent.AgentService.GetApplications:output_type -> zoey.agent.GetApplicationsResponse
+	22, // 27: zoey.agent.AgentService.GetWindows:output_type -> zoey.agent.GetWindowsResponse
+	26, // 28: zoey.agent.AgentService.GetElements:output_type -> zoey.agent.GetElementsResponse
+	23, // [23:29] is the sub-list for method output_type
+	17, // [17:23] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -2174,13 +2268,13 @@ func file_agent_proto_init() {
 	if File_agent_proto != nil {
 		return
 	}
-	file_agent_proto_msgTypes[6].OneofWrappers = []any{
+	file_agent_proto_msgTypes[7].OneofWrappers = []any{
 		(*ServerMessage_ExecuteTask)(nil),
 		(*ServerMessage_CancelTask)(nil),
 		(*ServerMessage_Ping)(nil),
 		(*ServerMessage_DataRequest)(nil),
 	}
-	file_agent_proto_msgTypes[7].OneofWrappers = []any{
+	file_agent_proto_msgTypes[8].OneofWrappers = []any{
 		(*WorkerMessage_TaskAck)(nil),
 		(*WorkerMessage_TaskProgress)(nil),
 		(*WorkerMessage_TaskResult)(nil),
@@ -2193,7 +2287,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

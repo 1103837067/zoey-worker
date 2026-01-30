@@ -28,9 +28,10 @@ type Client struct {
 
 	heartbeatFailures int
 
-	onStatusChange StatusCallback
-	onTask         TaskCallback
-	onCancel       CancelCallback
+	onStatusChange   StatusCallback
+	onTask           TaskCallback
+	onCancel         CancelCallback
+	onExecutorStatus ExecutorStatusCallback
 
 	logs   []LogEntry
 	logsMu sync.Mutex
@@ -203,15 +204,35 @@ func (c *Client) heartbeatLoop() {
 				continue
 			}
 			agentID := c.agentID
+			executorStatusCallback := c.onExecutorStatus
 			c.mu.RUnlock()
 
-			// 发送心跳
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			// 构建心跳请求
 			req := &pb.HeartbeatRequest{
 				AgentId:   agentID,
 				Timestamp: time.Now().UnixMilli(),
 			}
 
+			// 添加执行器状态
+			if executorStatusCallback != nil {
+				status, taskID, taskType, startedAt, count := executorStatusCallback()
+				req.AgentStatus = &pb.AgentStatus{
+					Status:            status,
+					CurrentTaskId:     taskID,
+					CurrentTaskType:   taskType,
+					TaskStartedAt:     startedAt,
+					RunningTasksCount: int32(count),
+				}
+			} else {
+				// 默认空闲状态
+				req.AgentStatus = &pb.AgentStatus{
+					Status:            "IDLE",
+					RunningTasksCount: 0,
+				}
+			}
+
+			// 发送心跳
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_, err := c.client.Heartbeat(ctx, req)
 			cancel()
 
@@ -347,6 +368,13 @@ func (c *Client) SetTaskCallback(callback TaskCallback) {
 func (c *Client) SetCancelCallback(callback CancelCallback) {
 	c.mu.Lock()
 	c.onCancel = callback
+	c.mu.Unlock()
+}
+
+// SetExecutorStatusCallback 设置执行器状态回调
+func (c *Client) SetExecutorStatusCallback(callback ExecutorStatusCallback) {
+	c.mu.Lock()
+	c.onExecutorStatus = callback
 	c.mu.Unlock()
 }
 

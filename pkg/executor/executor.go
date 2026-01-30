@@ -38,10 +38,18 @@ const (
 	TaskTypeSetClipboard  = "set_clipboard"
 )
 
+// TaskInfo 任务信息
+type TaskInfo struct {
+	TaskID    string
+	TaskType  string
+	StartedAt int64
+	CancelCh  chan struct{}
+}
+
 // Executor 任务执行器
 type Executor struct {
 	client        *grpc.Client
-	runningTasks  map[string]chan struct{} // 运行中的任务及其取消通道
+	runningTasks  map[string]*TaskInfo // 运行中的任务信息
 	tasksMutex    sync.Mutex
 }
 
@@ -49,7 +57,7 @@ type Executor struct {
 func NewExecutor(client *grpc.Client) *Executor {
 	return &Executor{
 		client:       client,
-		runningTasks: make(map[string]chan struct{}),
+		runningTasks: make(map[string]*TaskInfo),
 	}
 }
 
@@ -58,8 +66,8 @@ func (e *Executor) CancelTask(taskID string) bool {
 	e.tasksMutex.Lock()
 	defer e.tasksMutex.Unlock()
 
-	if cancelCh, exists := e.runningTasks[taskID]; exists {
-		close(cancelCh)
+	if taskInfo, exists := e.runningTasks[taskID]; exists {
+		close(taskInfo.CancelCh)
 		delete(e.runningTasks, taskID)
 		return true
 	}
@@ -67,12 +75,17 @@ func (e *Executor) CancelTask(taskID string) bool {
 }
 
 // registerTask 注册运行中的任务
-func (e *Executor) registerTask(taskID string) chan struct{} {
+func (e *Executor) registerTask(taskID, taskType string) chan struct{} {
 	e.tasksMutex.Lock()
 	defer e.tasksMutex.Unlock()
 
 	cancelCh := make(chan struct{})
-	e.runningTasks[taskID] = cancelCh
+	e.runningTasks[taskID] = &TaskInfo{
+		TaskID:    taskID,
+		TaskType:  taskType,
+		StartedAt: time.Now().UnixMilli(),
+		CancelCh:  cancelCh,
+	}
 	return cancelCh
 }
 
@@ -84,12 +97,34 @@ func (e *Executor) unregisterTask(taskID string) {
 	delete(e.runningTasks, taskID)
 }
 
+// GetStatus 获取执行器状态
+func (e *Executor) GetStatus() (status string, currentTaskID string, currentTaskType string, taskStartedAt int64, runningCount int) {
+	e.tasksMutex.Lock()
+	defer e.tasksMutex.Unlock()
+
+	runningCount = len(e.runningTasks)
+	if runningCount == 0 {
+		status = "IDLE"
+		return
+	}
+
+	status = "BUSY"
+	// 返回第一个任务的信息
+	for _, info := range e.runningTasks {
+		currentTaskID = info.TaskID
+		currentTaskType = info.TaskType
+		taskStartedAt = info.StartedAt
+		break
+	}
+	return
+}
+
 // Execute 执行任务
 func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	startTime := time.Now()
 
 	// 注册任务，获取取消通道
-	cancelCh := e.registerTask(taskID)
+	cancelCh := e.registerTask(taskID, taskType)
 	defer e.unregisterTask(taskID)
 
 	// 发送任务确认

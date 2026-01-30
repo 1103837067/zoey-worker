@@ -113,6 +113,11 @@ func main() {
 		go exec.Execute(taskID, taskType, payloadJSON)
 	})
 
+	// 设置执行器状态回调（用于心跳上报）
+	client.SetExecutorStatusCallback(func() (string, string, string, int64, int) {
+		return exec.GetStatus()
+	})
+
 	// 连接服务端
 	fmt.Println("[INFO] 正在连接服务端...")
 	if err := client.Connect(cfg.ServerURL, cfg.AccessKey, cfg.SecretKey); err != nil {

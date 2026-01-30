@@ -42,6 +42,11 @@ func (a *App) startup(ctx context.Context) {
 	a.grpcClient.SetCancelCallback(func(taskID string) bool {
 		return a.executor.CancelTask(taskID)
 	})
+
+	// 设置执行器状态回调（用于心跳上报）
+	a.grpcClient.SetExecutorStatusCallback(func() (string, string, string, int64, int) {
+		return a.executor.GetStatus()
+	})
 }
 
 // shutdown 应用关闭时调用
