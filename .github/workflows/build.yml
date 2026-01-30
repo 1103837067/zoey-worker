@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-latest  # arm64 (M1/M2) - works on Intel Macs via Rosetta 2
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,10 +20,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true  # 启用 Go 模块缓存
+
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/opencv
+          key: macos-brew-opencv-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            macos-brew-opencv-
 
       - name: Install OpenCV
         run: |
-          brew install opencv
+          brew install opencv || true  # 如果已缓存则跳过
           echo "PKG_CONFIG_PATH=$(brew --prefix opencv)/lib/pkgconfig" >> $GITHUB_ENV
           echo "CGO_CPPFLAGS=-I$(brew --prefix opencv)/include/opencv4" >> $GITHUB_ENV
           echo "CGO_LDFLAGS=-L$(brew --prefix opencv)/lib" >> $GITHUB_ENV
@@ -31,16 +42,18 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build CLI
+      - name: Build CLI and GUI
         run: |
           mkdir -p dist
-          CGO_ENABLED=1 go build -ldflags "-s -w" -o dist/zoeyworker-darwin-arm64 ./cmd/zoeyworker
-
-      - name: Build GUI
-        working-directory: cmd/zoeyworker-gui
-        run: |
+          # 并行构建 CLI
+          CGO_ENABLED=1 go build -ldflags "-s -w" -o dist/zoeyworker-darwin-arm64 ./cmd/zoeyworker &
+          CLI_PID=$!
+          # 构建 GUI
+          cd cmd/zoeyworker-gui
           wails build -platform darwin/arm64
           cp -r build/bin/zoeyworker-gui.app ../../dist/ZoeyWorker-darwin-arm64.app
+          # 等待 CLI 完成
+          wait $CLI_PID
 
       - name: Zip App Bundle
         run: |
@@ -64,6 +77,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true  # 启用 Go 模块缓存
 
       - name: Get Go paths
         id: go-paths
@@ -71,19 +85,16 @@ jobs:
         run: |
           $goRoot = (go env GOROOT)
           $goPath = (go env GOPATH)
-          # Convert Windows paths to MSYS2 format
           $goRootMsys = $goRoot -replace '\\', '/' -replace '^C:', '/c'
           $goPathMsys = $goPath -replace '\\', '/' -replace '^C:', '/c'
           echo "GOROOT_MSYS=$goRootMsys" >> $env:GITHUB_OUTPUT
           echo "GOPATH_MSYS=$goPathMsys" >> $env:GITHUB_OUTPUT
-          echo "Go Root: $goRoot -> $goRootMsys"
-          echo "Go Path: $goPath -> $goPathMsys"
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
-          update: true
+          update: false  # 禁用更新，节省时间
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-opencv
@@ -92,7 +103,7 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build CLI
+      - name: Build CLI and GUI
         shell: msys2 {0}
         env:
           GOROOT_MSYS: ${{ steps.go-paths.outputs.GOROOT_MSYS }}
@@ -109,43 +120,16 @@ jobs:
           export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
           export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
           export CGO_CXXFLAGS="$(pkg-config --cflags opencv4)"
-          
-          # Disable gocv's default Windows static library linking
           export OPENCV_GO_SKIP_LINKING=1
-          
-          echo "Using Go: $(which go)"
-          go version
-          echo "CGO_CFLAGS: $CGO_CFLAGS"
-          echo "CGO_LDFLAGS: $CGO_LDFLAGS"
           
           mkdir -p dist
+          
+          # 构建 CLI 和 GUI
           go build -tags customenv -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
-
-      - name: Build GUI
-        shell: msys2 {0}
-        working-directory: cmd/zoeyworker-gui
-        env:
-          GOROOT_MSYS: ${{ steps.go-paths.outputs.GOROOT_MSYS }}
-          GOPATH_MSYS: ${{ steps.go-paths.outputs.GOPATH_MSYS }}
-        run: |
-          export GOROOT="$GOROOT_MSYS"
-          export GOPATH="$GOPATH_MSYS"
-          export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           
-          # OpenCV configuration for CGO
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
-          export CGO_ENABLED=1
-          export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
-          export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
-          export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
-          export CGO_CXXFLAGS="$(pkg-config --cflags opencv4)"
-          
-          # Disable gocv's default Windows static library linking
-          export OPENCV_GO_SKIP_LINKING=1
-          
-          # Skip bindings generation (avoid DLL loading issues during binding generation)
+          cd cmd/zoeyworker-gui
           wails build -platform windows/amd64 -tags customenv -skipbindings
-          mv build/bin/zoeyworker-gui.exe ../../dist/ZoeyWorker-windows-amd64.exe
+          mv build/bin/ZoeyWorker.exe ../../dist/ZoeyWorker-windows-amd64.exe
 
       - name: Copy OpenCV DLLs
         shell: msys2 {0}
