@@ -55,6 +55,9 @@
         <button data-tab="connection" class="tab-btn active px-4 py-2 text-sm font-medium rounded-t-lg bg-gray-900 text-white">
           <i data-lucide="plug" class="w-4 h-4 inline mr-1"></i>连接
         </button>
+        <button data-tab="settings" class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg text-gray-400 hover:text-white">
+          <i data-lucide="settings" class="w-4 h-4 inline mr-1"></i>设置
+        </button>
         <button data-tab="logs" class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg text-gray-400 hover:text-white">
           <i data-lucide="scroll-text" class="w-4 h-4 inline mr-1"></i>日志
         </button>
@@ -118,6 +121,100 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+      
+      <!-- Settings Tab -->
+      <div id="tab-settings" class="tab-content hidden max-w-md mx-auto">
+        <div class="space-y-4">
+          
+          <!-- 连接设置 -->
+          <div class="bg-gray-800 rounded-xl border border-gray-700 p-6">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+              <i data-lucide="wifi" class="w-5 h-5 text-primary-500"></i>
+              连接设置
+            </h2>
+            <div class="space-y-4">
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span class="text-sm font-medium text-gray-200">启动时自动连接</span>
+                  <p class="text-xs text-gray-400">应用启动后自动连接到服务器</p>
+                </div>
+                <input type="checkbox" id="settingAutoConnect" class="w-5 h-5 rounded bg-gray-700 border-gray-600 text-primary-500 focus:ring-primary-500 cursor-pointer">
+              </label>
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span class="text-sm font-medium text-gray-200">断开后自动重连</span>
+                  <p class="text-xs text-gray-400">连接断开后自动尝试重新连接</p>
+                </div>
+                <input type="checkbox" id="settingAutoReconnect" class="w-5 h-5 rounded bg-gray-700 border-gray-600 text-primary-500 focus:ring-primary-500 cursor-pointer">
+              </label>
+              <div class="flex items-center justify-between">
+                <div>
+                  <span class="text-sm font-medium text-gray-200">重连间隔</span>
+                  <p class="text-xs text-gray-400">自动重连的时间间隔</p>
+                </div>
+                <select id="settingReconnectInterval" class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                  <option value="3">3 秒</option>
+                  <option value="5">5 秒</option>
+                  <option value="10">10 秒</option>
+                  <option value="30">30 秒</option>
+                  <option value="60">60 秒</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 日志设置 -->
+          <div class="bg-gray-800 rounded-xl border border-gray-700 p-6">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+              <i data-lucide="file-text" class="w-5 h-5 text-primary-500"></i>
+              日志设置
+            </h2>
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-sm font-medium text-gray-200">日志级别</span>
+                <p class="text-xs text-gray-400">显示的最低日志级别</p>
+              </div>
+              <select id="settingLogLevel" class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARN">WARN</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </div>
+          </div>
+          
+          <!-- 界面设置 -->
+          <div class="bg-gray-800 rounded-xl border border-gray-700 p-6">
+            <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+              <i data-lucide="monitor" class="w-5 h-5 text-primary-500"></i>
+              界面设置
+            </h2>
+            <div class="space-y-4">
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span class="text-sm font-medium text-gray-200">关闭时最小化到托盘</span>
+                  <p class="text-xs text-gray-400">点击关闭按钮时隐藏到系统托盘</p>
+                </div>
+                <input type="checkbox" id="settingMinimizeToTray" class="w-5 h-5 rounded bg-gray-700 border-gray-600 text-primary-500 focus:ring-primary-500 cursor-pointer">
+              </label>
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span class="text-sm font-medium text-gray-200">启动时最小化</span>
+                  <p class="text-xs text-gray-400">应用启动后自动隐藏窗口</p>
+                </div>
+                <input type="checkbox" id="settingStartMinimized" class="w-5 h-5 rounded bg-gray-700 border-gray-600 text-primary-500 focus:ring-primary-500 cursor-pointer">
+              </label>
+            </div>
+          </div>
+          
+          <!-- 保存提示 -->
+          <div id="settingsSaved" class="hidden bg-green-900/30 border border-green-700 text-green-300 px-4 py-3 rounded-lg text-sm text-center">
+            <i data-lucide="check-circle" class="w-4 h-4 inline mr-1"></i>
+            设置已保存
+          </div>
+          
         </div>
       </div>
       

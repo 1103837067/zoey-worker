@@ -3,6 +3,7 @@ package auto
 import (
 	"fmt"
 	"image"
+	"runtime"
 	"strings"
 	"time"
 
@@ -21,6 +22,15 @@ type WindowInfo struct {
 // GetWindows 获取窗口列表
 // filter: 可选的过滤条件，按窗口标题或进程名称筛选
 func GetWindows(filter ...string) ([]WindowInfo, error) {
+	// macOS 使用原生 API 避免 robotgo 的权限弹窗问题
+	if runtime.GOOS == "darwin" {
+		return getWindowsDarwin(filter...)
+	}
+	return getWindowsRobotgo(filter...)
+}
+
+// getWindowsRobotgo 使用 robotgo 获取窗口（Windows/Linux）
+func getWindowsRobotgo(filter ...string) ([]WindowInfo, error) {
 	// 获取所有进程
 	pids, err := robotgo.Pids()
 	if err != nil {

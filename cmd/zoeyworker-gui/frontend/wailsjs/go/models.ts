@@ -5,6 +5,11 @@ export namespace main {
 	    access_key: string;
 	    secret_key: string;
 	    auto_connect: boolean;
+	    auto_reconnect: boolean;
+	    reconnect_interval: number;
+	    log_level: string;
+	    minimize_to_tray: boolean;
+	    start_minimized: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConfigData(source);
@@ -16,6 +21,11 @@ export namespace main {
 	        this.access_key = source["access_key"];
 	        this.secret_key = source["secret_key"];
 	        this.auto_connect = source["auto_connect"];
+	        this.auto_reconnect = source["auto_reconnect"];
+	        this.reconnect_interval = source["reconnect_interval"];
+	        this.log_level = source["log_level"];
+	        this.minimize_to_tray = source["minimize_to_tray"];
+	        this.start_minimized = source["start_minimized"];
 	    }
 	}
 	export class ConnectResult {

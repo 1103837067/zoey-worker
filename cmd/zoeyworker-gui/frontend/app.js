@@ -21,14 +21,25 @@ const els = {
   emptyLogs: $('emptyLogs'),
   logList: $('logList'),
   systemInfo: $('systemInfo'),
-  currentTime: $('currentTime')
+  currentTime: $('currentTime'),
+  // 设置
+  settingAutoConnect: $('settingAutoConnect'),
+  settingAutoReconnect: $('settingAutoReconnect'),
+  settingReconnectInterval: $('settingReconnectInterval'),
+  settingLogLevel: $('settingLogLevel'),
+  settingMinimizeToTray: $('settingMinimizeToTray'),
+  settingStartMinimized: $('settingStartMinimized'),
+  settingsSaved: $('settingsSaved')
 }
 
 // ========== 状态 ==========
 let state = {
   connected: false,
   agentId: '',
-  agentName: ''
+  agentName: '',
+  config: null, // 当前配置
+  reconnecting: false, // 是否正在重连
+  reconnectTimer: null // 重连定时器
 }
 
 // ========== 初始化 ==========
@@ -41,9 +52,20 @@ async function init() {
   // 加载配置
   try {
     const config = await window.go.main.App.LoadConfig()
+    state.config = config
+    
+    // 连接信息
     if (config.server_url) els.serverUrl.value = config.server_url
     if (config.access_key) els.accessKey.value = config.access_key
     if (config.secret_key) els.secretKey.value = config.secret_key
+    
+    // 设置选项
+    loadSettingsToUI(config)
+    
+    // 自动连接
+    if (config.auto_connect && config.server_url && config.access_key && config.secret_key) {
+      setTimeout(() => connect(), 500) // 延迟连接，等待 UI 就绪
+    }
   } catch (e) {
     console.error('加载配置失败:', e)
   }
@@ -58,6 +80,9 @@ async function init() {
 
   // 定时刷新日志
   setInterval(refreshLogs, 3000)
+
+  // 定时检查连接状态
+  setInterval(checkConnectionStatus, 2000)
 }
 
 // ========== 事件绑定 ==========
@@ -78,6 +103,21 @@ function bindEvents() {
 
   // 刷新日志
   els.refreshLogsBtn.addEventListener('click', refreshLogs)
+  
+  // 设置变更 - 自动保存
+  const settingInputs = [
+    els.settingAutoConnect,
+    els.settingAutoReconnect,
+    els.settingReconnectInterval,
+    els.settingLogLevel,
+    els.settingMinimizeToTray,
+    els.settingStartMinimized
+  ]
+  settingInputs.forEach(input => {
+    if (input) {
+      input.addEventListener('change', saveSettings)
+    }
+  })
 }
 
 // ========== Tab 切换 ==========
@@ -135,6 +175,9 @@ async function connect() {
 }
 
 async function disconnect() {
+  // 手动断开时取消自动重连
+  cancelReconnect()
+  
   try {
     await window.go.main.App.Disconnect()
   } catch (e) {
@@ -144,7 +187,62 @@ async function disconnect() {
   state.connected = false
   state.agentId = ''
   state.agentName = ''
+  setConnecting(false)
   updateUI()
+}
+
+// 检查连接状态
+async function checkConnectionStatus() {
+  try {
+    const status = await window.go.main.App.GetStatus()
+    const wasConnected = state.connected
+    
+    state.connected = status.connected
+    state.agentId = status.agent_id || ''
+    state.agentName = status.agent_name || ''
+    
+    // 状态变化时更新 UI
+    if (wasConnected !== state.connected) {
+      setConnecting(false)
+      updateUI()
+      
+      // 从已连接变为断开，且启用了自动重连
+      if (wasConnected && !state.connected && state.config?.auto_reconnect && !state.reconnecting) {
+        scheduleReconnect()
+      }
+    }
+  } catch (e) {
+    console.error('检查连接状态失败:', e)
+  }
+}
+
+// 安排自动重连
+function scheduleReconnect() {
+  if (state.reconnectTimer) {
+    clearTimeout(state.reconnectTimer)
+  }
+  
+  const interval = (state.config?.reconnect_interval || 5) * 1000
+  state.reconnecting = true
+  
+  console.log(`将在 ${interval / 1000} 秒后自动重连...`)
+  
+  state.reconnectTimer = setTimeout(async () => {
+    if (!state.connected && state.config?.auto_reconnect) {
+      console.log('正在自动重连...')
+      await connect()
+    }
+    state.reconnecting = false
+  }, interval)
+}
+
+// 取消自动重连
+function cancelReconnect() {
+  if (state.reconnectTimer) {
+    clearTimeout(state.reconnectTimer)
+    state.reconnectTimer = null
+  }
+  state.reconnecting = false
 }
 
 // ========== UI 更新 ==========
@@ -227,6 +325,51 @@ async function refreshLogs() {
   } catch (e) {
     console.error('获取日志失败:', e)
   }
+}
+
+// ========== 设置管理 ==========
+function loadSettingsToUI(config) {
+  if (!config) return
+  
+  els.settingAutoConnect.checked = config.auto_connect || false
+  els.settingAutoReconnect.checked = config.auto_reconnect !== false // 默认 true
+  els.settingReconnectInterval.value = config.reconnect_interval || 5
+  els.settingLogLevel.value = config.log_level || 'INFO'
+  els.settingMinimizeToTray.checked = config.minimize_to_tray !== false // 默认 true
+  els.settingStartMinimized.checked = config.start_minimized || false
+}
+
+async function saveSettings() {
+  try {
+    // 获取当前配置并更新设置
+    const config = {
+      server_url: els.serverUrl.value.trim() || 'localhost:50051',
+      access_key: els.accessKey.value.trim(),
+      secret_key: els.secretKey.value.trim(),
+      auto_connect: els.settingAutoConnect.checked,
+      auto_reconnect: els.settingAutoReconnect.checked,
+      reconnect_interval: parseInt(els.settingReconnectInterval.value) || 5,
+      log_level: els.settingLogLevel.value,
+      minimize_to_tray: els.settingMinimizeToTray.checked,
+      start_minimized: els.settingStartMinimized.checked
+    }
+    
+    await window.go.main.App.SaveConfig(config)
+    state.config = config
+    
+    // 显示保存成功提示
+    showSettingsSaved()
+  } catch (e) {
+    console.error('保存设置失败:', e)
+  }
+}
+
+function showSettingsSaved() {
+  els.settingsSaved.classList.remove('hidden')
+  lucide.createIcons()
+  setTimeout(() => {
+    els.settingsSaved.classList.add('hidden')
+  }, 2000)
 }
 
 // ========== 工具函数 ==========

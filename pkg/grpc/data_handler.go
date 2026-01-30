@@ -23,6 +23,26 @@ type DataResponseResult struct {
 	PayloadJSON string
 }
 
+// LogFunc 日志函数类型
+type LogFunc func(level, message string)
+
+// 全局日志函数
+var globalLogFunc LogFunc
+
+// SetLogFunc 设置日志函数
+func SetLogFunc(fn LogFunc) {
+	globalLogFunc = fn
+}
+
+// log 内部日志函数
+func log(level, message string) {
+	if globalLogFunc != nil {
+		globalLogFunc(level, message)
+	} else {
+		fmt.Printf("[%s] %s\n", level, message)
+	}
+}
+
 // HandleDataRequest 处理数据请求
 func HandleDataRequest(requestType string, payloadJSON string) *DataResponseResult {
 	var payload map[string]interface{}
@@ -53,11 +73,11 @@ func HandleDataRequest(requestType string, payloadJSON string) *DataResponseResu
 
 // handleGetApplications 处理获取应用程序列表请求
 func handleGetApplications() *DataResponseResult {
-	fmt.Printf("[DEBUG] handleGetApplications called\n")
+	log("DEBUG", "handleGetApplications called")
 
 	processes, err := auto.GetProcesses()
 	if err != nil {
-		fmt.Printf("[ERROR] GetProcesses failed: %v\n", err)
+		log("ERROR", fmt.Sprintf("GetProcesses failed: %v", err))
 		return &DataResponseResult{
 			RequestType: RequestTypeGetApplications,
 			Success:     false,
@@ -66,7 +86,7 @@ func handleGetApplications() *DataResponseResult {
 		}
 	}
 
-	fmt.Printf("[DEBUG] Got %d processes\n", len(processes))
+	log("DEBUG", fmt.Sprintf("Got %d processes", len(processes)))
 
 	// 转换为应用程序信息格式
 	type ApplicationInfo struct {
@@ -79,9 +99,9 @@ func handleGetApplications() *DataResponseResult {
 	// 获取所有窗口（只调用一次，避免在循环中重复调用）
 	windows, windowsErr := auto.GetWindows()
 	if windowsErr != nil {
-		fmt.Printf("[WARN] GetWindows failed: %v\n", windowsErr)
+		log("WARN", fmt.Sprintf("GetWindows failed: %v", windowsErr))
 	} else {
-		fmt.Printf("[DEBUG] Got %d windows\n", len(windows))
+		log("DEBUG", fmt.Sprintf("Got %d windows", len(windows)))
 	}
 
 	// 创建 PID -> 窗口标题的映射
@@ -105,13 +125,13 @@ func handleGetApplications() *DataResponseResult {
 		}
 	}
 
-	fmt.Printf("[DEBUG] Returning %d applications\n", len(apps))
+	log("DEBUG", fmt.Sprintf("Returning %d applications", len(apps)))
 
 	data, err := json.Marshal(map[string]interface{}{
 		"applications": apps,
 	})
 	if err != nil {
-		fmt.Printf("[ERROR] JSON marshal failed: %v\n", err)
+		log("ERROR", fmt.Sprintf("JSON marshal failed: %v", err))
 		return &DataResponseResult{
 			RequestType: RequestTypeGetApplications,
 			Success:     false,
@@ -120,7 +140,7 @@ func handleGetApplications() *DataResponseResult {
 		}
 	}
 
-	fmt.Printf("[DEBUG] Response size: %d bytes\n", len(data))
+	log("DEBUG", fmt.Sprintf("Response size: %d bytes", len(data)))
 
 	return &DataResponseResult{
 		RequestType: RequestTypeGetApplications,
@@ -132,10 +152,18 @@ func handleGetApplications() *DataResponseResult {
 
 // handleGetWindows 处理获取窗口列表请求
 func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
+	// 检查权限
+	permStatus := auto.CheckPermissions()
+	log("DEBUG", fmt.Sprintf("Permissions: Accessibility=%v, ScreenRecording=%v", 
+		permStatus.Accessibility, permStatus.ScreenRecording))
+	
+	log("DEBUG", fmt.Sprintf("handleGetWindows payload: %+v", payload))
+
 	// 解析筛选参数
 	var filter string
 	if processName, ok := payload["process_name"].(string); ok && processName != "" {
 		filter = processName
+		log("DEBUG", fmt.Sprintf("Filter by process_name: %s", filter))
 	}
 
 	var windows []auto.WindowInfo
@@ -145,6 +173,13 @@ func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
 		windows, err = auto.GetWindows(filter)
 	} else {
 		windows, err = auto.GetWindows()
+	}
+
+	log("DEBUG", fmt.Sprintf("GetWindows returned %d windows, err=%v", len(windows), err))
+	
+	// 打印每个窗口的标题用于调试
+	for i, win := range windows {
+		log("DEBUG", fmt.Sprintf("Window[%d]: PID=%d, Title=%q", i, win.PID, win.Title))
 	}
 
 	if err != nil {

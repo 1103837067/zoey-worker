@@ -10,19 +10,36 @@ import (
 
 // ConnectionConfig 连接配置
 type ConnectionConfig struct {
+	// 连接设置
 	ServerURL   string `json:"server_url"`
 	AccessKey   string `json:"access_key"`
 	SecretKey   string `json:"secret_key"`
-	AutoConnect bool   `json:"auto_connect"`
+	AutoConnect bool   `json:"auto_connect"` // 启动时自动连接
+
+	// 重连设置
+	AutoReconnect     bool `json:"auto_reconnect"`     // 断开后自动重连
+	ReconnectInterval int  `json:"reconnect_interval"` // 重连间隔(秒)
+
+	// 日志设置
+	LogLevel string `json:"log_level"` // 日志级别: DEBUG, INFO, WARN, ERROR
+
+	// GUI 设置
+	MinimizeToTray bool `json:"minimize_to_tray"` // 关闭时最小化到托盘
+	StartMinimized bool `json:"start_minimized"`  // 启动时最小化
 }
 
 // DefaultConnectionConfig 默认连接配置
 func DefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
-		ServerURL:   "localhost:50051",
-		AccessKey:   "",
-		SecretKey:   "",
-		AutoConnect: false,
+		ServerURL:         "localhost:50051",
+		AccessKey:         "",
+		SecretKey:         "",
+		AutoConnect:       false,
+		AutoReconnect:     true,
+		ReconnectInterval: 5,
+		LogLevel:          "INFO",
+		MinimizeToTray:    true,
+		StartMinimized:    false,
 	}
 }
 

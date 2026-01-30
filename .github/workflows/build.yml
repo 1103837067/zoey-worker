@@ -101,10 +101,19 @@ jobs:
           export GOROOT="$GOROOT_MSYS"
           export GOPATH="$GOPATH_MSYS"
           export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
+          
+          # OpenCV configuration for CGO
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
+          export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
+          export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
+          export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
+          
           echo "Using Go: $(which go)"
           go version
+          echo "CGO_CFLAGS: $CGO_CFLAGS"
+          echo "CGO_LDFLAGS: $CGO_LDFLAGS"
+          
           mkdir -p dist
           go build -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-windows-amd64.exe ./cmd/zoeyworker
 
@@ -118,8 +127,14 @@ jobs:
           export GOROOT="$GOROOT_MSYS"
           export GOPATH="$GOPATH_MSYS"
           export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
+          
+          # OpenCV configuration for CGO
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
+          export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
+          export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
+          export CGO_CPPFLAGS="$(pkg-config --cflags opencv4)"
+          
           wails build -platform windows/amd64
           mv build/bin/zoeyworker-gui.exe ../../dist/ZoeyWorker-windows-amd64.exe
 

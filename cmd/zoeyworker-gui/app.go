@@ -55,33 +55,64 @@ func (a *App) shutdown(ctx context.Context) {
 
 // ConfigData 配置数据
 type ConfigData struct {
+	// 连接设置
 	ServerURL   string `json:"server_url"`
 	AccessKey   string `json:"access_key"`
 	SecretKey   string `json:"secret_key"`
 	AutoConnect bool   `json:"auto_connect"`
+
+	// 重连设置
+	AutoReconnect     bool `json:"auto_reconnect"`
+	ReconnectInterval int  `json:"reconnect_interval"`
+
+	// 日志设置
+	LogLevel string `json:"log_level"`
+
+	// GUI 设置
+	MinimizeToTray bool `json:"minimize_to_tray"`
+	StartMinimized bool `json:"start_minimized"`
 }
 
 // LoadConfig 加载配置
 func (a *App) LoadConfig() ConfigData {
 	cfg, err := a.configMgr.Load()
 	if err != nil {
-		return ConfigData{ServerURL: "localhost:50051"}
+		defaults := config.DefaultConnectionConfig()
+		return ConfigData{
+			ServerURL:         defaults.ServerURL,
+			AutoConnect:       defaults.AutoConnect,
+			AutoReconnect:     defaults.AutoReconnect,
+			ReconnectInterval: defaults.ReconnectInterval,
+			LogLevel:          defaults.LogLevel,
+			MinimizeToTray:    defaults.MinimizeToTray,
+			StartMinimized:    defaults.StartMinimized,
+		}
 	}
 	return ConfigData{
-		ServerURL:   cfg.ServerURL,
-		AccessKey:   cfg.AccessKey,
-		SecretKey:   cfg.SecretKey,
-		AutoConnect: cfg.AutoConnect,
+		ServerURL:         cfg.ServerURL,
+		AccessKey:         cfg.AccessKey,
+		SecretKey:         cfg.SecretKey,
+		AutoConnect:       cfg.AutoConnect,
+		AutoReconnect:     cfg.AutoReconnect,
+		ReconnectInterval: cfg.ReconnectInterval,
+		LogLevel:          cfg.LogLevel,
+		MinimizeToTray:    cfg.MinimizeToTray,
+		StartMinimized:    cfg.StartMinimized,
 	}
 }
 
 // SaveConfig 保存配置
 func (a *App) SaveConfig(data ConfigData) error {
 	cfg := &config.ConnectionConfig{
-		ServerURL:   data.ServerURL,
-		AccessKey:   data.AccessKey,
-		SecretKey:   data.SecretKey,
-		AutoConnect: data.AutoConnect,
+		ServerURL:         data.ServerURL,
+		AccessKey:         data.AccessKey,
+		SecretKey:         data.SecretKey,
+		AutoConnect:       data.AutoConnect,
+		AutoReconnect:     data.AutoReconnect,
+		ReconnectInterval: data.ReconnectInterval,
+		LogLevel:          data.LogLevel,
+		MinimizeToTray:    data.MinimizeToTray,
+		StartMinimized:    data.StartMinimized,
 	}
 	return a.configMgr.Save(cfg)
 }

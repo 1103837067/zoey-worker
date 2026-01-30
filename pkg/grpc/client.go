@@ -43,11 +43,18 @@ func NewClient(config *ClientConfig) *Client {
 	if config == nil {
 		config = DefaultConfig()
 	}
-	return &Client{
+	c := &Client{
 		config: config,
 		stopCh: make(chan struct{}),
 		logs:   make([]LogEntry, 0, 500),
 	}
+	
+	// 设置全局日志函数，让 data_handler 也能输出日志
+	SetLogFunc(func(level, message string) {
+		c.log(level, message)
+	})
+	
+	return c
 }
 
 // Connect 连接到服务端
