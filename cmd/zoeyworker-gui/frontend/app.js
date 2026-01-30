@@ -377,5 +377,139 @@ function updateTime() {
   els.currentTime.textContent = new Date().toLocaleTimeString('zh-CN')
 }
 
+// ========== OCR 插件管理 ==========
+async function checkOCRStatus() {
+  try {
+    const status = await window.go.main.App.GetOCRPluginStatus()
+    updateOCRUI(status)
+  } catch (e) {
+    console.error('检查 OCR 状态失败:', e)
+  }
+}
+
+function updateOCRUI(status) {
+  const ocrStatus = $('ocrStatus')
+  const ocrNotInstalled = $('ocrNotInstalled')
+  const ocrDownloading = $('ocrDownloading')
+  const ocrInstalled = $('ocrInstalled')
+  const ocrError = $('ocrError')
+  
+  // 隐藏所有状态
+  ocrNotInstalled.classList.add('hidden')
+  ocrDownloading.classList.add('hidden')
+  ocrInstalled.classList.add('hidden')
+  ocrError.classList.add('hidden')
+  
+  if (status.downloading) {
+    // 下载中
+    ocrStatus.innerHTML = `
+      <span class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+      <span class="text-sm text-yellow-400">下载中</span>
+    `
+    ocrDownloading.classList.remove('hidden')
+    $('ocrProgress').textContent = `${Math.round(status.progress)}%`
+    $('ocrProgressBar').style.width = `${status.progress}%`
+  } else if (status.installed) {
+    // 已安装
+    ocrStatus.innerHTML = `
+      <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+      <span class="text-sm text-green-400">已安装</span>
+    `
+    ocrInstalled.classList.remove('hidden')
+  } else {
+    // 未安装
+    ocrStatus.innerHTML = `
+      <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
+      <span class="text-sm text-gray-400">未安装</span>
+    `
+    ocrNotInstalled.classList.remove('hidden')
+  }
+  
+  lucide.createIcons()
+}
+
+async function installOCR() {
+  const installBtn = $('installOcrBtn')
+  installBtn.disabled = true
+  
+  // 隐藏错误
+  $('ocrError').classList.add('hidden')
+  
+  try {
+    // 显示下载中状态
+    $('ocrNotInstalled').classList.add('hidden')
+    $('ocrDownloading').classList.remove('hidden')
+    updateOCRUI({ downloading: true, progress: 0, installed: false })
+    
+    // 开始安装
+    await window.go.main.App.InstallOCRPlugin()
+    
+    // 安装完成后检查状态
+    await checkOCRStatus()
+  } catch (e) {
+    console.error('安装 OCR 失败:', e)
+    $('ocrError').classList.remove('hidden')
+    $('ocrErrorMsg').textContent = e.message || '安装失败，请重试'
+    installBtn.disabled = false
+    $('ocrDownloading').classList.add('hidden')
+    $('ocrNotInstalled').classList.remove('hidden')
+  }
+}
+
+async function uninstallOCR() {
+  if (!confirm('确定要卸载 OCR 支持吗？')) {
+    return
+  }
+  
+  try {
+    await window.go.main.App.UninstallOCRPlugin()
+    await checkOCRStatus()
+  } catch (e) {
+    console.error('卸载 OCR 失败:', e)
+    $('ocrError').classList.remove('hidden')
+    $('ocrErrorMsg').textContent = e.message || '卸载失败'
+  }
+}
+
+// 监听 OCR 安装进度事件
+function setupOCREvents() {
+  if (window.runtime && window.runtime.EventsOn) {
+    window.runtime.EventsOn('ocr-install-progress', (progress) => {
+      updateOCRUI({ downloading: true, progress: progress, installed: false })
+    })
+    
+    window.runtime.EventsOn('ocr-install-complete', () => {
+      checkOCRStatus()
+    })
+    
+    window.runtime.EventsOn('ocr-install-error', (errMsg) => {
+      $('ocrError').classList.remove('hidden')
+      $('ocrErrorMsg').textContent = errMsg
+      $('ocrDownloading').classList.add('hidden')
+      $('ocrNotInstalled').classList.remove('hidden')
+    })
+  }
+}
+
+// 绑定 OCR 按钮事件
+function bindOCREvents() {
+  const installBtn = $('installOcrBtn')
+  const uninstallBtn = $('uninstallOcrBtn')
+  
+  if (installBtn) {
+    installBtn.addEventListener('click', installOCR)
+  }
+  if (uninstallBtn) {
+    uninstallBtn.addEventListener('click', uninstallOCR)
+  }
+}
+
 // ========== 启动 ==========
-document.addEventListener('DOMContentLoaded', init)
+document.addEventListener('DOMContentLoaded', () => {
+  init()
+  
+  // OCR 插件管理
+  checkOCRStatus()
+  bindOCREvents()
+  setupOCREvents()
+})

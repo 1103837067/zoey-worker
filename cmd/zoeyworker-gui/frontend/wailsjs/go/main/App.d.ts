@@ -10,9 +10,13 @@ export function Disconnect():Promise<void>;
 
 export function GetLogs(arg1:number):Promise<Array<main.LogEntry>>;
 
+export function GetOCRPluginStatus():Promise<main.OCRPluginStatus>;
+
 export function GetStatus():Promise<main.StatusInfo>;
 
 export function GetSystemInfo():Promise<main.SystemInfo>;
+
+export function InstallOCRPlugin():Promise<void>;
 
 export function LoadConfig():Promise<main.ConfigData>;
 
@@ -23,3 +27,5 @@ export function OpenScreenRecordingSettings():Promise<void>;
 export function RequestAccessibilityPermission():Promise<boolean>;
 
 export function SaveConfig(arg1:main.ConfigData):Promise<void>;
+
+export function UninstallOCRPlugin():Promise<void>;

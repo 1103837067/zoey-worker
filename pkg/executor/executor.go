@@ -12,6 +12,7 @@ import (
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
+	"github.com/zoeyai/zoeyworker/pkg/plugin"
 	"github.com/zoeyai/zoeyworker/pkg/uia"
 )
 
@@ -335,6 +336,11 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 
 // executeClickText 执行点击文字
 func (e *Executor) executeClickText(payload map[string]interface{}) (interface{}, error) {
+	// 检查 OCR 插件是否已安装
+	if !plugin.GetOCRPlugin().IsInstalled() {
+		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
+	}
+
 	text, ok := payload["text"].(string)
 	if !ok || text == "" {
 		return nil, fmt.Errorf("缺少 text 参数")
@@ -434,6 +440,11 @@ func (e *Executor) executeWaitImage(payload map[string]interface{}) (interface{}
 
 // executeWaitText 执行等待文字
 func (e *Executor) executeWaitText(payload map[string]interface{}) (interface{}, error) {
+	// 检查 OCR 插件是否已安装
+	if !plugin.GetOCRPlugin().IsInstalled() {
+		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
+	}
+
 	text, ok := payload["text"].(string)
 	if !ok || text == "" {
 		return nil, fmt.Errorf("缺少 text 参数")

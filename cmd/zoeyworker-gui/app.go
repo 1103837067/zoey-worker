@@ -6,10 +6,12 @@ import (
 	"os"
 	"runtime"
 
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
+	"github.com/zoeyai/zoeyworker/pkg/plugin"
 )
 
 // App 应用结构体
@@ -32,6 +34,9 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.grpcClient = grpc.NewClient(nil)
 	a.executor = executor.NewExecutor(a.grpcClient)
+
+	// 设置 OCR 插件
+	auto.SetOCRPlugin(plugin.GetOCRPlugin())
 
 	// 设置 executor 日志函数，将日志路由到 grpcClient
 	executor.SetLogFunc(func(level, message string) {
@@ -290,4 +295,50 @@ func (a *App) OpenAccessibilitySettings() {
 // OpenScreenRecordingSettings 打开屏幕录制设置
 func (a *App) OpenScreenRecordingSettings() {
 	auto.OpenScreenRecordingSettings()
+}
+
+// ==================== OCR 插件管理 ====================
+
+// OCRPluginStatus OCR 插件状态
+type OCRPluginStatus struct {
+	Installed   bool    `json:"installed"`
+	Downloading bool    `json:"downloading"`
+	Progress    float64 `json:"progress"`
+}
+
+// GetOCRPluginStatus 获取 OCR 插件状态
+func (a *App) GetOCRPluginStatus() OCRPluginStatus {
+	p := plugin.GetOCRPlugin()
+	status := p.GetStatus()
+	return OCRPluginStatus{
+		Installed:   status.Installed,
+		Downloading: status.Downloading,
+		Progress:    status.Progress,
+	}
+}
+
+// InstallOCRPlugin 安装 OCR 插件
+func (a *App) InstallOCRPlugin() error {
+	p := plugin.GetOCRPlugin()
+
+	// 设置进度回调，通过事件发送给前端
+	p.SetProgressCallback(func(progress float64) {
+		wailsRuntime.EventsEmit(a.ctx, "ocr-install-progress", progress)
+	})
+
+	// 开始安装
+	err := p.Install()
+	if err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "ocr-install-error", err.Error())
+		return err
+	}
+
+	wailsRuntime.EventsEmit(a.ctx, "ocr-install-complete", true)
+	return nil
+}
+
+// UninstallOCRPlugin 卸载 OCR 插件
+func (a *App) UninstallOCRPlugin() error {
+	p := plugin.GetOCRPlugin()
+	return p.Uninstall()
 }

@@ -18,12 +18,20 @@ export function GetLogs(arg1) {
   return window['go']['main']['App']['GetLogs'](arg1);
 }
 
+export function GetOCRPluginStatus() {
+  return window['go']['main']['App']['GetOCRPluginStatus']();
+}
+
 export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
 export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
+}
+
+export function InstallOCRPlugin() {
+  return window['go']['main']['App']['InstallOCRPlugin']();
 }
 
 export function LoadConfig() {
@@ -44,4 +52,8 @@ export function RequestAccessibilityPermission() {
 
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
+}
+
+export function UninstallOCRPlugin() {
+  return window['go']['main']['App']['UninstallOCRPlugin']();
 }

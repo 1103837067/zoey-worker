@@ -62,6 +62,22 @@ export namespace main {
 	        this.message = source["message"];
 	    }
 	}
+	export class OCRPluginStatus {
+	    installed: boolean;
+	    downloading: boolean;
+	    progress: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OCRPluginStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.downloading = source["downloading"];
+	        this.progress = source["progress"];
+	    }
+	}
 	export class PermissionInfo {
 	    accessibility: boolean;
 	    screen_recording: boolean;

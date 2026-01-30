@@ -191,7 +191,26 @@ func InitOCR(config ocr.Config) error {
 // getTextRecognizer 获取或创建 OCR 识别器
 func getTextRecognizer() (*ocr.TextRecognizer, error) {
 	if globalTextRecognizer == nil {
-		// 使用默认配置
+		// 尝试使用插件提供的配置
+		ocrPlugin := getOCRPlugin()
+		if ocrPlugin != nil && ocrPlugin.IsInstalled() {
+			onnxPath, detPath, recPath, dictPath, err := ocrPlugin.GetConfig()
+			if err == nil {
+				config := ocr.Config{
+					OnnxRuntimeLibPath: onnxPath,
+					DetModelPath:       detPath,
+					RecModelPath:       recPath,
+					DictPath:           dictPath,
+				}
+				recognizer, err := ocr.NewTextRecognizer(config)
+				if err == nil {
+					globalTextRecognizer = recognizer
+					return globalTextRecognizer, nil
+				}
+			}
+		}
+
+		// 回退到默认配置
 		recognizer, err := ocr.GetGlobalRecognizer()
 		if err != nil {
 			return nil, fmt.Errorf("初始化 OCR 失败: %w", err)
@@ -199,6 +218,23 @@ func getTextRecognizer() (*ocr.TextRecognizer, error) {
 		globalTextRecognizer = recognizer
 	}
 	return globalTextRecognizer, nil
+}
+
+// OCRPluginInterface OCR 插件接口
+type OCRPluginInterface interface {
+	IsInstalled() bool
+	GetConfig() (onnxPath, detPath, recPath, dictPath string, err error)
+}
+
+var ocrPluginInstance OCRPluginInterface
+
+// SetOCRPlugin 设置 OCR 插件实例（避免循环导入）
+func SetOCRPlugin(p OCRPluginInterface) {
+	ocrPluginInstance = p
+}
+
+func getOCRPlugin() OCRPluginInterface {
+	return ocrPluginInstance
 }
 
 // ClickText 点击文字位置
