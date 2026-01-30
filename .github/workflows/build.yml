@@ -147,6 +147,37 @@ jobs:
           wails build -platform windows/amd64 -tags customenv -skipbindings
           mv build/bin/zoeyworker-gui.exe ../../dist/ZoeyWorker-windows-amd64.exe
 
+      - name: Copy OpenCV DLLs
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist/dll
+          # Copy OpenCV DLLs
+          cp /mingw64/bin/libopencv_*.dll dist/dll/
+          # Copy MinGW runtime DLLs
+          cp /mingw64/bin/libgcc_s_seh-1.dll dist/dll/
+          cp /mingw64/bin/libstdc++-6.dll dist/dll/
+          cp /mingw64/bin/libwinpthread-1.dll dist/dll/
+          # Copy other required DLLs
+          cp /mingw64/bin/libpng16-16.dll dist/dll/ 2>/dev/null || true
+          cp /mingw64/bin/libjpeg-8.dll dist/dll/ 2>/dev/null || true
+          cp /mingw64/bin/libtiff-6.dll dist/dll/ 2>/dev/null || true
+          cp /mingw64/bin/libwebp-7.dll dist/dll/ 2>/dev/null || true
+          cp /mingw64/bin/zlib1.dll dist/dll/ 2>/dev/null || true
+          cp /mingw64/bin/libgomp-1.dll dist/dll/ 2>/dev/null || true
+          
+          echo "Copied DLLs:"
+          ls -la dist/dll/
+
+      - name: Package Windows distribution
+        shell: pwsh
+        run: |
+          # Create a zip with exe and DLLs together
+          Compress-Archive -Path dist/ZoeyWorker-windows-amd64.exe, dist/zoeyworker-windows-amd64.exe, dist/dll/* -DestinationPath dist/ZoeyWorker-windows-amd64.zip -Force
+          # Clean up individual files, keep only the zip
+          Remove-Item dist/ZoeyWorker-windows-amd64.exe -ErrorAction SilentlyContinue
+          Remove-Item dist/zoeyworker-windows-amd64.exe -ErrorAction SilentlyContinue
+          Remove-Item dist/dll -Recurse -ErrorAction SilentlyContinue
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
