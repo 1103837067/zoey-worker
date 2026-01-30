@@ -309,14 +309,12 @@ func waitForTextInternal(text string, o *Options) (*Point, error) {
 
 // ActivateWindow 激活窗口
 func ActivateWindow(name string) error {
-	robotgo.ActiveName(name)
-	return nil
+	return activateWindowPlatform(name)
 }
 
 // ActivateWindowByPID 通过 PID 激活窗口
 func ActivateWindowByPID(pid int) error {
-	robotgo.ActivePid(pid)
-	return nil
+	return activateWindowByPIDPlatform(pid)
 }
 
 // GetActiveWindowTitle 获取当前活动窗口标题

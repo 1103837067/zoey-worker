@@ -4,9 +4,10 @@ package auto
 
 /*
 #cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework CoreGraphics -framework Cocoa
+#cgo LDFLAGS: -framework CoreGraphics -framework Cocoa -framework AppKit
 #import <CoreGraphics/CoreGraphics.h>
 #import <Cocoa/Cocoa.h>
+#import <AppKit/AppKit.h>
 
 // 窗口信息结构
 typedef struct {
@@ -19,6 +20,39 @@ typedef struct {
     char title[512];
     char ownerName[256];
 } WindowInfoC;
+
+// 通过 PID 激活应用窗口
+int activateAppByPID(int pid) {
+    NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+    if (app == nil) {
+        return 0;
+    }
+    [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+    return 1;
+}
+
+// 通过应用名称激活窗口
+int activateAppByName(const char* name) {
+    NSString* appName = [NSString stringWithUTF8String:name];
+    NSArray* apps = [NSRunningApplication runningApplicationsWithBundleIdentifier:appName];
+    
+    // 如果 bundle ID 找不到，尝试用名称匹配
+    if ([apps count] == 0) {
+        NSArray* allApps = [[NSWorkspace sharedWorkspace] runningApplications];
+        for (NSRunningApplication* app in allApps) {
+            NSString* localizedName = [app localizedName];
+            if (localizedName && [localizedName localizedCaseInsensitiveContainsString:appName]) {
+                [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+                return 1;
+            }
+        }
+        return 0;
+    }
+    
+    NSRunningApplication* app = [apps firstObject];
+    [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+    return 1;
+}
 
 // 获取窗口列表 (不触发权限弹窗)
 // 注意：macOS 的标签页（如浏览器标签）不是独立窗口，需要辅助功能API获取
@@ -125,6 +159,8 @@ int getWindowList(WindowInfoC* windows, int maxCount) {
 */
 import "C"
 import (
+	"fmt"
+	"os/exec"
 	"strings"
 	"unsafe"
 )
@@ -176,3 +212,25 @@ func getWindowsDarwin(filter ...string) ([]WindowInfo, error) {
 
 // 确保 unsafe 被使用（虽然这里不需要，但保留以备后用）
 var _ = unsafe.Pointer(nil)
+
+// activateWindowPlatform 使用 AppleScript 激活窗口（最可靠的方式）
+func activateWindowPlatform(name string) error {
+	// 使用 osascript 执行 AppleScript
+	script := fmt.Sprintf(`tell application "%s" to activate`, name)
+	cmd := exec.Command("osascript", "-e", script)
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("无法激活窗口 %s: %w", name, err)
+	}
+	return nil
+}
+
+// activateWindowByPIDPlatform 使用 macOS 原生 API 通过 PID 激活窗口
+func activateWindowByPIDPlatform(pid int) error {
+	result := C.activateAppByPID(C.int(pid))
+	if result == 0 {
+		// 备选：尝试通过 PID 获取应用名再激活
+		return fmt.Errorf("无法激活 PID %d 的窗口", pid)
+	}
+	return nil
+}
