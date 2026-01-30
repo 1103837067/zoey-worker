@@ -307,7 +307,7 @@ func waitForTextInternal(text string, o *Options) (*Point, error) {
 
 // ==================== 窗口操作 ====================
 
-// ActivateWindow 激活窗口
+// ActivateWindow 激活窗口（支持应用名称或窗口标题）
 func ActivateWindow(name string) error {
 	return activateWindowPlatform(name)
 }
@@ -315,6 +315,13 @@ func ActivateWindow(name string) error {
 // ActivateWindowByPID 通过 PID 激活窗口
 func ActivateWindowByPID(pid int) error {
 	return activateWindowByPIDPlatform(pid)
+}
+
+// ActivateWindowByTitle 通过应用名和窗口标题激活特定窗口
+// appName: 应用名称，如 "Microsoft Edge"
+// windowTitle: 窗口标题的部分内容，如 "GitHub"
+func ActivateWindowByTitle(appName, windowTitle string) error {
+	return activateWindowByTitlePlatform(appName, windowTitle)
 }
 
 // GetActiveWindowTitle 获取当前活动窗口标题

@@ -213,24 +213,83 @@ func getWindowsDarwin(filter ...string) ([]WindowInfo, error) {
 // 确保 unsafe 被使用（虽然这里不需要，但保留以备后用）
 var _ = unsafe.Pointer(nil)
 
-// activateWindowPlatform 使用 AppleScript 激活窗口（最可靠的方式）
+// activateWindowPlatform 使用 AppleScript 激活窗口
+// 支持两种方式：
+// 1. 应用名称（如 "Cursor", "Microsoft Edge"）- 激活应用的最前面窗口
+// 2. 窗口标题（如 "build.yml — zoeymind"）- 激活包含该标题的特定窗口
 func activateWindowPlatform(name string) error {
-	// 使用 osascript 执行 AppleScript
+	// 先尝试作为应用名称激活
 	script := fmt.Sprintf(`tell application "%s" to activate`, name)
 	cmd := exec.Command("osascript", "-e", script)
 	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("无法激活窗口 %s: %w", name, err)
+	if err == nil {
+		return nil
 	}
-	return nil
+	
+	// 如果失败，尝试通过窗口标题查找并激活
+	// 先查找包含该标题的窗口
+	windows, _ := getWindowsDarwin(name)
+	if len(windows) > 0 {
+		// 找到了匹配的窗口，通过 PID 激活该应用，然后用 AppleScript 切换到特定窗口
+		w := windows[0]
+		
+		// 先激活应用
+		result := C.activateAppByPID(C.int(w.PID))
+		if result == 0 {
+			return fmt.Errorf("无法激活窗口: %s", name)
+		}
+		
+		// 尝试通过 System Events 激活特定窗口（按标题匹配）
+		// 这需要辅助功能权限
+		activateScript := fmt.Sprintf(`
+			tell application "System Events"
+				set targetWindow to first window of (first process whose frontmost is true) whose name contains "%s"
+				perform action "AXRaise" of targetWindow
+			end tell
+		`, name)
+		exec.Command("osascript", "-e", activateScript).Run()
+		
+		return nil
+	}
+	
+	return fmt.Errorf("无法激活窗口 %s: 未找到匹配的应用或窗口", name)
 }
 
 // activateWindowByPIDPlatform 使用 macOS 原生 API 通过 PID 激活窗口
 func activateWindowByPIDPlatform(pid int) error {
 	result := C.activateAppByPID(C.int(pid))
 	if result == 0 {
-		// 备选：尝试通过 PID 获取应用名再激活
 		return fmt.Errorf("无法激活 PID %d 的窗口", pid)
 	}
+	return nil
+}
+
+// activateWindowByTitlePlatform 通过窗口标题激活特定窗口
+func activateWindowByTitlePlatform(appName, windowTitle string) error {
+	// 先激活应用
+	script := fmt.Sprintf(`tell application "%s" to activate`, appName)
+	cmd := exec.Command("osascript", "-e", script)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("无法激活应用 %s: %w", appName, err)
+	}
+	
+	// 然后切换到特定窗口
+	// 使用 System Events 通过窗口标题匹配
+	windowScript := fmt.Sprintf(`
+		tell application "System Events"
+			tell process "%s"
+				set frontmost to true
+				repeat with w in windows
+					if name of w contains "%s" then
+						perform action "AXRaise" of w
+						return true
+					end if
+				end repeat
+			end tell
+		end tell
+		return false
+	`, appName, windowTitle)
+	
+	exec.Command("osascript", "-e", windowScript).Run()
 	return nil
 }

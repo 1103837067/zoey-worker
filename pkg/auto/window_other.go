@@ -20,3 +20,10 @@ func activateWindowByPIDPlatform(pid int) error {
 	robotgo.ActivePid(pid)
 	return nil
 }
+
+// activateWindowByTitlePlatform 非 macOS 系统：先激活应用，再通过标题查找
+func activateWindowByTitlePlatform(appName, windowTitle string) error {
+	// Windows 上 robotgo.ActiveName 支持窗口标题
+	robotgo.ActiveName(windowTitle)
+	return nil
+}
