@@ -206,11 +206,11 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-git-lfs
             zip
             unzip
             wget
             git
-            git-lfs
 
       - name: Download Pre-built OpenCV
         shell: msys2 {0}
