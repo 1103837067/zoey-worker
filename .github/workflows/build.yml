@@ -239,9 +239,14 @@ jobs:
           echo "GOPATH=$goPath" >> $env:GITHUB_OUTPUT
 
       - name: Install Build Tools
+        shell: pwsh
         run: |
           # 安装 goversioninfo 用于生成 Windows 资源文件（图标、版本信息）
           go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+          # 验证安装
+          $gopath = go env GOPATH
+          Write-Host "GOPATH: $gopath"
+          Get-ChildItem "$gopath\bin\goversioninfo.exe" -ErrorAction SilentlyContinue
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -317,12 +322,37 @@ jobs:
           cp frontend/index.html frontend/dist/
           cp frontend/app.js frontend/dist/
           
-          # 生成 Windows 资源文件（图标、版本信息）
-          echo "=== Generating Windows resource file ==="
-          $GOPATH/bin/goversioninfo -64 -o resource_windows.syso versioninfo.json
+          cd ../..
+
+      - name: Generate Windows Resources and Build GUI
+        shell: pwsh
+        env:
+          CGO_ENABLED: "1"
+          CGO_CFLAGS: "-IC:/opencv-minimal/include"
+          CGO_LDFLAGS: "-LC:/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100 -lopencv_highgui4100 -lopencv_videoio4100"
+          CGO_CPPFLAGS: "-IC:/opencv-minimal/include"
+          CGO_CXXFLAGS: "-IC:/opencv-minimal/include"
+        run: |
+          $gopath = go env GOPATH
+          $env:PATH = "$gopath\bin;C:\msys64\mingw64\bin;$env:PATH"
           
-          GOOS=windows GOARCH=amd64 go build -tags customenv -ldflags "-s -w -H windowsgui" -o ZoeyWorker.exe .
-          cp ZoeyWorker.exe ../../dist/
+          Set-Location cmd/zoeyworker-gui
+          
+          # 生成 Windows 资源文件（图标、版本信息）
+          Write-Host "=== Generating Windows resource file ==="
+          & "$gopath\bin\goversioninfo.exe" -64 -o resource_windows.syso versioninfo.json
+          if (Test-Path "resource_windows.syso") {
+            Write-Host "resource_windows.syso created successfully"
+            Get-Item "resource_windows.syso"
+          } else {
+            Write-Host "ERROR: Failed to create resource_windows.syso"
+            exit 1
+          }
+          
+          # 构建 GUI
+          Write-Host "=== Building GUI ==="
+          go build -tags customenv -ldflags "-s -w -H windowsgui" -o ZoeyWorker.exe .
+          Copy-Item ZoeyWorker.exe -Destination "../../dist/"
 
       - name: Package Self-Contained Distribution
         shell: msys2 {0}
@@ -415,23 +445,35 @@ jobs:
           echo "DLL count: $(ls -1 dist/*.dll 2>/dev/null | wc -l)"
           echo "Total size:"
           du -sh dist/
+
+      - name: Create NSIS Installer
+        shell: pwsh
+        run: |
+          # 安装 NSIS
+          choco install nsis -y
           
-          echo "=== Creating ZIP ==="
-          cd dist
-          zip -r ../ZoeyWorker-windows-x64.zip *
-          cd ..
+          # 复制 NSIS 脚本和图标到工作目录
+          Copy-Item "cmd/zoeyworker-gui/build/windows/installer.nsi" -Destination "."
+          Copy-Item "cmd/zoeyworker-gui/build/windows/icon.ico" -Destination "."
           
-          rm -rf dist
-          mkdir dist
-          mv ZoeyWorker-windows-x64.zip dist/
+          # 运行 NSIS 编译器
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /V3 installer.nsi
           
-          echo "=== Done ==="
-          ls -la dist/
+          # 移动安装包到 dist 目录
+          Move-Item "ZoeyWorker-Setup-x64.exe" -Destination "dist/"
+          
+          # 同时创建 ZIP 便携版
+          Compress-Archive -Path "dist\*" -DestinationPath "dist\ZoeyWorker-windows-x64-portable.zip" -Force
+          
+          Write-Host "=== Final artifacts ==="
+          Get-ChildItem dist/
 
       - uses: actions/upload-artifact@v4
         with:
           name: zoeyworker-windows-amd64
-          path: dist/
+          path: |
+            dist/ZoeyWorker-Setup-x64.exe
+            dist/ZoeyWorker-windows-x64-portable.zip
 
   release:
     needs: [build-macos, build-windows]
@@ -443,5 +485,7 @@ jobs:
           path: artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.zip
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.exe
           generate_release_notes: true
