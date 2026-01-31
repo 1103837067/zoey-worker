@@ -66,12 +66,11 @@ func main() {
 		},
 	})
 
-	// 监听窗口关闭事件，最小化到托盘而不是退出
-	mainWindow.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
-		// 阻止默认关闭行为
-		e.Cancel()
-		// 隐藏窗口到托盘
-		mainWindow.Hide()
+	// 使用 Hook 拦截窗口关闭事件（Hook 比 OnWindowEvent 更早执行）
+	// 点击关闭按钮时隐藏到托盘而不是退出
+	mainWindow.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		e.Cancel()       // 阻止关闭
+		mainWindow.Hide() // 隐藏到托盘
 	})
 
 	// 设置系统托盘
