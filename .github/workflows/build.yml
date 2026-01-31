@@ -193,12 +193,71 @@ jobs:
           update: false
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-opencv
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
             mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-libjpeg-turbo
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libtiff
+            mingw-w64-x86_64-libwebp
+            mingw-w64-x86_64-openjpeg2
+            mingw-w64-x86_64-zlib
             zip
             unzip
             wget
             git
+
+      - name: Build OpenCV from source (minimal, no Qt/FFmpeg/highgui)
+        shell: msys2 {0}
+        run: |
+          OPENCV_VERSION="4.9.0"
+          
+          echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
+          wget -q "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv.tar.gz
+          wget -q "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv_contrib.tar.gz
+          tar xzf opencv.tar.gz
+          tar xzf opencv_contrib.tar.gz
+          
+          echo "=== Building OpenCV (minimal modules only) ==="
+          mkdir -p opencv-${OPENCV_VERSION}/build
+          cd opencv-${OPENCV_VERSION}/build
+          
+          # 只编译需要的模块，完全禁用 GUI/视频/Qt/FFmpeg
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/mingw64 \
+            -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
+            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
+            -DWITH_QT=OFF \
+            -DWITH_GTK=OFF \
+            -DWITH_FFMPEG=OFF \
+            -DWITH_GSTREAMER=OFF \
+            -DWITH_V4L=OFF \
+            -DWITH_DSHOW=OFF \
+            -DWITH_MSMF=OFF \
+            -DWITH_VTK=OFF \
+            -DWITH_OPENGL=OFF \
+            -DWITH_OPENCL=OFF \
+            -DWITH_CUDA=OFF \
+            -DBUILD_opencv_highgui=OFF \
+            -DBUILD_opencv_videoio=OFF \
+            -DBUILD_opencv_viz=OFF \
+            -DBUILD_opencv_python3=OFF \
+            -DBUILD_opencv_python2=OFF \
+            -DBUILD_opencv_java=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOPENCV_GENERATE_PKGCONFIG=ON
+          
+          ninja -j$(nproc)
+          ninja install
+          
+          echo "=== OpenCV build complete ==="
+          ls -la /mingw64/bin/libopencv*.dll
+          pkg-config --modversion opencv4
 
       - name: Download ONNX Runtime & OCR Models
         shell: msys2 {0}
@@ -260,20 +319,12 @@ jobs:
           
           echo "=== Collecting all dependencies ==="
           
-          # 需要排除的 DLL（会拖入 Qt6 依赖）
-          EXCLUDE_DLLS="highgui|videoio|viz|cvv|ovis|Qt6|Qt5"
-          
-          # 递归复制 DLL 依赖，排除不需要的模块
+          # 递归复制 DLL 依赖
           copy_deps() {
             local file="$1"
             [ ! -f "$file" ] && return
             for dll in $(ldd "$file" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
               local dllname=$(basename "$dll")
-              # 跳过排除列表中的 DLL
-              if echo "$dllname" | grep -qE "$EXCLUDE_DLLS"; then
-                echo "  Skipping (excluded): $dllname"
-                continue
-              fi
               if [ -n "$dll" ] && [ -f "$dll" ] && [ ! -f "dist/$dllname" ]; then
                 echo "Copying: $dllname"
                 cp "$dll" dist/ && copy_deps "$dll"
@@ -292,18 +343,9 @@ jobs:
           echo "=== Copying ONNX Runtime (purego dynamic loading) ==="
           cp onnxruntime/lib/*.dll dist/ 2>/dev/null || true
           
-          echo "=== Copying ONLY required OpenCV modules ==="
-          # 只复制项目实际使用的 OpenCV 模块，避免拖入 Qt/VTK 等不需要的依赖
-          # 项目使用: core, imgproc, imgcodecs, features2d, flann, calib3d
-          # 不使用: highgui(需要Qt), videoio(需要FFmpeg), viz(需要VTK)
-          for module in core imgproc imgcodecs features2d flann calib3d photo ml objdetect; do
-            dll="/mingw64/bin/libopencv_${module}-409.dll"
-            [ -f "$dll" ] && cp "$dll" dist/
-          done
-          
-          # 特征点匹配需要的额外模块
-          for module in xfeatures2d; do
-            dll="/mingw64/bin/libopencv_${module}-409.dll"
+          echo "=== Copying OpenCV DLLs (self-built, no highgui/videoio) ==="
+          # 自编译的 OpenCV 只有我们需要的模块，直接复制全部
+          for dll in /mingw64/bin/libopencv*.dll; do
             [ -f "$dll" ] && cp "$dll" dist/
           done
           
@@ -347,18 +389,13 @@ jobs:
             [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
           done
           
-          echo "=== Multi-round dependency check (like macOS) ==="
-          # 多轮检查，确保所有间接依赖都被复制，但排除 Qt/highgui
+          echo "=== Multi-round dependency check ==="
           for round in 1 2 3 4 5; do
             echo "Round $round: checking dependencies..."
             changed=0
             for dll in dist/*.dll; do
               for dep in $(ldd "$dll" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
                 depname=$(basename "$dep")
-                # 跳过排除列表中的 DLL
-                if echo "$depname" | grep -qE "$EXCLUDE_DLLS"; then
-                  continue
-                fi
                 if [ -n "$dep" ] && [ -f "$dep" ] && [ ! -f "dist/$depname" ]; then
                   echo "  Found missing: $depname"
                   cp "$dep" dist/
@@ -367,12 +404,6 @@ jobs:
               done
             done
             [ $changed -eq 0 ] && echo "  No new dependencies found, stopping." && break
-          done
-          
-          # 最终清理：删除任何意外复制的排除文件
-          echo "=== Final cleanup: removing excluded DLLs ==="
-          for pattern in "*highgui*" "*videoio*" "*viz*" "*cvv*" "*ovis*" "Qt6*" "Qt5*"; do
-            rm -f dist/$pattern 2>/dev/null && echo "Removed: $pattern" || true
           done
           
           echo "=== Copying OCR models ==="
