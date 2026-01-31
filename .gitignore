@@ -5,8 +5,9 @@ bin/
 *.dll
 *.so
 *.dylib
-zoeyworker
-zoeyworker-gui
+*.syso
+/zoeyworker
+/ZoeyWorker
 
 # Test binary
 *.test
