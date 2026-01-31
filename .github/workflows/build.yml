@@ -70,10 +70,25 @@ jobs:
             -DBUILD_WEBP=OFF \
             -DBUILD_OPENJPEG=OFF \
             -DBUILD_OPENEXR=OFF \
-            -DOPENCV_GENERATE_PKGCONFIG=ON
+            -DOPENCV_GENERATE_PKGCONFIG=OFF
           
           ninja -j$(sysctl -n hw.ncpu)
           ninja install
+          
+          # 手动创建 pkgconfig 文件
+          mkdir -p $HOME/opencv-minimal/lib/pkgconfig
+          cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'PKGEOF'
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/opencv4
+
+Name: OpenCV
+Description: Open Source Computer Vision Library
+Version: 4.10.0
+Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
+Cflags: -I${includedir}
+PKGEOF
           
           echo "=== OpenCV build complete ==="
           ls -la $HOME/opencv-minimal/lib/
@@ -288,10 +303,25 @@ jobs:
             -DBUILD_WEBP=OFF \
             -DBUILD_OPENJPEG=OFF \
             -DBUILD_OPENEXR=OFF \
-            -DOPENCV_GENERATE_PKGCONFIG=ON
+            -DOPENCV_GENERATE_PKGCONFIG=OFF
           
           ninja -j$(nproc)
           ninja install
+          
+          # 手动创建 pkgconfig 文件
+          mkdir -p /mingw64/lib/pkgconfig
+          cat > /mingw64/lib/pkgconfig/opencv4.pc << 'PKGEOF'
+prefix=/mingw64
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/opencv4
+
+Name: OpenCV
+Description: Open Source Computer Vision Library
+Version: 4.10.0
+Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
+Cflags: -I${includedir}
+PKGEOF
           
           echo "=== OpenCV build complete ==="
           ls -la /mingw64/bin/libopencv*.dll
