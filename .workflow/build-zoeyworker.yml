@@ -1,0 +1,38 @@
+version: '1.0'
+name: build-zoeyworker
+displayName: BuildZoeyWorker
+triggers:
+  trigger: auto
+  push:
+    branches:
+      prefix:
+        - ''
+stages:
+  - name: build
+    displayName: Build
+    strategy: naturally
+    trigger: auto
+    steps:
+      - step: build@golang
+        name: build_golang
+        displayName: Golang 构建
+        golangVersion: 1.16
+        commands:
+          - echo "Gitee Go 限制:"
+          - echo "1. 只支持 Linux 环境 (CentOS)"
+          - echo "2. Go 版本最高 1.16 (项目需要 1.23)"
+          - echo "3. 没有 OpenCV/CMake 等依赖"
+          - echo ""
+          - echo "此项目需要:"
+          - echo "- macOS 和 Windows 构建环境"
+          - echo "- Go 1.23+"
+          - echo "- OpenCV 源码编译"
+          - echo "- CGO 支持"
+          - echo ""
+          - echo "建议使用 GitHub Actions 进行构建"
+          - go version
+          - ''
+        artifacts:
+          - name: BUILD_ARTIFACT
+            path:
+              - ./dist
