@@ -23,11 +23,17 @@ type WindowInfo struct {
 // GetWindows 获取窗口列表
 // filter: 可选的过滤条件，按窗口标题或进程名称筛选
 func GetWindows(filter ...string) ([]WindowInfo, error) {
-	// macOS 使用原生 API 避免 robotgo 的权限弹窗问题
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
+		// macOS 使用原生 API 避免 robotgo 的权限弹窗问题
 		return getWindowsDarwin(filter...)
+	case "windows":
+		// Windows 使用原生 API 正确处理 UTF-16 编码（解决中文乱码）
+		return getWindowsWindows(filter...)
+	default:
+		// Linux 等其他平台使用 robotgo
+		return getWindowsRobotgo(filter...)
 	}
-	return getWindowsRobotgo(filter...)
 }
 
 // getWindowsRobotgo 使用 robotgo 获取窗口（Windows/Linux）
