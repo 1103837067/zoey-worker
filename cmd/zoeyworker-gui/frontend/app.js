@@ -583,10 +583,136 @@ function showBackgroundNotification() {
   }, 3000)
 }
 
+// ========== 调试面板 ==========
+const debugState = {
+  history: [], // 匹配历史记录
+  maxHistory: 20
+}
+
+// 设置调试事件监听
+function setupDebugEvents() {
+  // Wails v3 事件监听
+  // 等待 wails 加载后再绑定事件
+  const bindDebugEvent = () => {
+    if (window.wails && window.wails.Events && window.wails.Events.On) {
+      window.wails.Events.On('debug:match', (data) => {
+        console.log('收到调试数据:', data)
+        updateDebugPanel(data)
+      })
+      console.log('调试事件已绑定')
+    } else {
+      // 如果 wails 还没加载，稍后再试
+      setTimeout(bindDebugEvent, 500)
+    }
+  }
+  bindDebugEvent()
+  
+  // 绑定清空历史按钮
+  const clearBtn = document.getElementById('clearDebugHistoryBtn')
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      debugState.history = []
+      updateDebugHistory()
+    }
+  }
+}
+
+// 更新调试面板
+function updateDebugPanel(data) {
+  // 更新状态
+  const statusEl = document.getElementById('debugStatus')
+  if (statusEl) {
+    if (data.matched) {
+      statusEl.innerHTML = `<span class="w-2 h-2 bg-green-500 rounded-full"></span><span class="text-green-600">匹配成功</span>`
+    } else {
+      statusEl.innerHTML = `<span class="w-2 h-2 bg-red-500 rounded-full"></span><span class="text-red-600">匹配失败</span>`
+    }
+  }
+  
+  // 更新信息
+  document.getElementById('debugTaskId').textContent = data.task_id || '-'
+  document.getElementById('debugActionType').textContent = data.action_type || '-'
+  document.getElementById('debugMatchResult').textContent = data.matched ? '成功' : '失败'
+  document.getElementById('debugConfidence').textContent = data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '-'
+  document.getElementById('debugPosition').textContent = data.matched ? `(${data.x}, ${data.y})` : '-'
+  document.getElementById('debugDuration').textContent = data.duration_ms ? `${data.duration_ms}ms` : '-'
+  
+  // 更新目标图片
+  const templateImg = document.getElementById('debugTemplateImg')
+  const templateEmpty = document.getElementById('debugTemplateEmpty')
+  if (data.template_base64) {
+    templateImg.src = `data:image/jpeg;base64,${data.template_base64}`
+    templateImg.classList.remove('hidden')
+    templateEmpty.classList.add('hidden')
+  } else {
+    templateImg.classList.add('hidden')
+    templateEmpty.classList.remove('hidden')
+  }
+  
+  // 更新截图
+  const screenImg = document.getElementById('debugScreenshotImg')
+  const screenEmpty = document.getElementById('debugScreenshotEmpty')
+  if (data.screen_base64) {
+    screenImg.src = `data:image/jpeg;base64,${data.screen_base64}`
+    screenImg.classList.remove('hidden')
+    screenEmpty.classList.add('hidden')
+  } else {
+    screenImg.classList.add('hidden')
+    screenEmpty.classList.remove('hidden')
+  }
+  
+  // 添加到历史记录
+  debugState.history.unshift({
+    ...data,
+    timestamp: new Date().toLocaleTimeString()
+  })
+  if (debugState.history.length > debugState.maxHistory) {
+    debugState.history.pop()
+  }
+  updateDebugHistory()
+}
+
+// 更新调试历史列表
+function updateDebugHistory() {
+  const listEl = document.getElementById('debugHistoryList')
+  const emptyEl = document.getElementById('debugHistoryEmpty')
+  
+  if (debugState.history.length === 0) {
+    emptyEl.classList.remove('hidden')
+    listEl.innerHTML = ''
+    listEl.appendChild(emptyEl)
+    return
+  }
+  
+  emptyEl.classList.add('hidden')
+  listEl.innerHTML = debugState.history.map((item, idx) => `
+    <div class="flex items-center justify-between px-3 py-2 hover:bg-muted/50 cursor-pointer border-b last:border-0 text-xs" onclick="selectDebugHistory(${idx})">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full ${item.matched ? 'bg-green-500' : 'bg-red-500'}"></span>
+        <span class="font-medium">${item.action_type || '未知'}</span>
+      </div>
+      <div class="flex items-center gap-3 text-muted-foreground">
+        <span>${item.confidence ? (item.confidence * 100).toFixed(0) + '%' : '-'}</span>
+        <span>${item.duration_ms || 0}ms</span>
+        <span>${item.timestamp}</span>
+      </div>
+    </div>
+  `).join('')
+}
+
+// 选择历史记录项
+window.selectDebugHistory = function(idx) {
+  const item = debugState.history[idx]
+  if (item) {
+    updateDebugPanel(item)
+  }
+}
+
 // ========== 启动 ==========
 document.addEventListener('DOMContentLoaded', () => {
   init()
   checkPermissions()
   bindPermissionEvents()
   setupBackgroundEvents()
+  setupDebugEvents()
 })

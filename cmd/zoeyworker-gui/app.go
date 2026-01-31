@@ -347,3 +347,29 @@ func (a *App) QuitApp() {
 		mainApp.Quit()
 	}
 }
+
+// ==================== 调试功能 ====================
+
+// DebugMatchData 调试匹配数据
+type DebugMatchData struct {
+	TaskID         string  `json:"task_id"`
+	ActionType     string  `json:"action_type"`
+	TemplateBase64 string  `json:"template_base64"` // 目标图片 base64
+	ScreenBase64   string  `json:"screen_base64"`   // 截图 base64
+	Matched        bool    `json:"matched"`
+	Confidence     float64 `json:"confidence"`
+	X              int     `json:"x"`
+	Y              int     `json:"y"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
+	Duration       int64   `json:"duration_ms"`
+	Error          string  `json:"error,omitempty"`
+}
+
+// EmitDebugMatch 发送调试匹配数据到前端
+func EmitDebugMatch(data DebugMatchData) {
+	app := application.Get()
+	if app != nil {
+		app.Event.Emit("debug:match", data)
+	}
+}

@@ -128,6 +128,9 @@
         <button data-tab="logs" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground">
           <i data-lucide="scroll-text" class="w-4 h-4 inline mr-1.5"></i>日志
         </button>
+        <button data-tab="debug" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground">
+          <i data-lucide="bug" class="w-4 h-4 inline mr-1.5"></i>调试
+        </button>
       </div>
     </nav>
     
@@ -327,6 +330,72 @@
           <div id="logContainer" class="p-2 h-96 overflow-auto font-mono text-xs bg-muted/30">
             <div id="emptyLogs" class="p-8 text-center text-muted-foreground">暂无日志</div>
             <div id="logList"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Debug Tab -->
+      <div id="tab-debug" class="tab-content hidden">
+        <div class="space-y-4">
+          <!-- 调试信息头部 -->
+          <div class="bg-card rounded-lg border shadow-sm p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-semibold flex items-center gap-2">
+                <i data-lucide="bug" class="w-4 h-4 text-muted-foreground"></i>
+                图像匹配调试
+              </h2>
+              <div id="debugStatus" class="flex items-center gap-2 text-xs">
+                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                <span class="text-muted-foreground">等待任务</span>
+              </div>
+            </div>
+            <!-- 匹配信息 -->
+            <div id="debugInfo" class="text-xs space-y-1 text-muted-foreground">
+              <div>任务 ID: <span id="debugTaskId" class="font-mono">-</span></div>
+              <div>操作类型: <span id="debugActionType">-</span></div>
+              <div>匹配结果: <span id="debugMatchResult">-</span></div>
+              <div>匹配度: <span id="debugConfidence">-</span></div>
+              <div>位置: <span id="debugPosition">-</span></div>
+              <div>耗时: <span id="debugDuration">-</span></div>
+            </div>
+          </div>
+          
+          <!-- 图片对比区域 -->
+          <div class="grid grid-cols-2 gap-4">
+            <!-- 目标图片 -->
+            <div class="bg-card rounded-lg border shadow-sm overflow-hidden">
+              <div class="px-3 py-2 border-b bg-muted/30">
+                <h3 class="text-xs font-medium">目标图片 (Template)</h3>
+              </div>
+              <div id="debugTemplateContainer" class="p-2 min-h-[200px] flex items-center justify-center bg-muted/10">
+                <div id="debugTemplateEmpty" class="text-xs text-muted-foreground">暂无目标图片</div>
+                <img id="debugTemplateImg" class="hidden max-w-full max-h-[300px] object-contain rounded" alt="目标图片">
+              </div>
+            </div>
+            
+            <!-- 截图图片 -->
+            <div class="bg-card rounded-lg border shadow-sm overflow-hidden">
+              <div class="px-3 py-2 border-b bg-muted/30">
+                <h3 class="text-xs font-medium">屏幕截图 (Screenshot)</h3>
+              </div>
+              <div id="debugScreenshotContainer" class="p-2 min-h-[200px] flex items-center justify-center bg-muted/10 relative">
+                <div id="debugScreenshotEmpty" class="text-xs text-muted-foreground">暂无截图</div>
+                <img id="debugScreenshotImg" class="hidden max-w-full max-h-[300px] object-contain rounded" alt="屏幕截图">
+                <!-- 匹配位置标记 -->
+                <div id="debugMatchMarker" class="hidden absolute border-2 border-green-500 bg-green-500/20 pointer-events-none"></div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 历史记录 -->
+          <div class="bg-card rounded-lg border shadow-sm">
+            <div class="px-3 py-2 border-b flex items-center justify-between">
+              <h3 class="text-xs font-medium">匹配历史</h3>
+              <button id="clearDebugHistoryBtn" class="text-xs text-muted-foreground hover:text-foreground">清空</button>
+            </div>
+            <div id="debugHistoryList" class="max-h-[150px] overflow-auto">
+              <div id="debugHistoryEmpty" class="p-4 text-xs text-muted-foreground text-center">暂无历史记录</div>
+            </div>
           </div>
         </div>
       </div>
