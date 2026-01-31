@@ -134,15 +134,21 @@ jobs:
             done
           done
           
-          echo "=== Copying OCR models (exclude lib folder with duplicate ONNX Runtime) ==="
+          echo "=== Copying OCR models (only essential files) ==="
           mkdir -p "${RESOURCES_DIR}/models"
-          for item in models/*; do
-            itemname=$(basename "$item")
-            # 跳过 lib 目录（包含重复的 ONNX Runtime）
-            if [ "$itemname" != "lib" ]; then
-              cp -r "$item" "${RESOURCES_DIR}/models/"
+          # 只复制必需的模型文件，排除 lib、examples、assets、.git 等
+          for dir in paddle_weights ddddocr_weights; do
+            if [ -d "models/$dir" ]; then
+              cp -r "models/$dir" "${RESOURCES_DIR}/models/"
             fi
           done
+          # 复制必要的配置文件
+          [ -f "models/LICENSE" ] && cp "models/LICENSE" "${RESOURCES_DIR}/models/"
+          [ -f "models/README.md" ] && cp "models/README.md" "${RESOURCES_DIR}/models/"
+          
+          echo "=== Models directory size ==="
+          du -sh "${RESOURCES_DIR}/models/"
+          du -sh "${RESOURCES_DIR}/models/"/* 2>/dev/null || true
           
           echo "=== Signing ==="
           codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
