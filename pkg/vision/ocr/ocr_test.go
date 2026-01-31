@@ -76,6 +76,63 @@ func setupOCRConfig(t *testing.T) Config {
 	return config
 }
 
+// TestOCRAvailability 测试 OCR 功能是否可用（用于 CI 验证）
+// 这个测试使用默认配置，验证打包的模型文件是否能正确加载
+func TestOCRAvailability(t *testing.T) {
+	t.Log("=== 测试 OCR 可用性 ===")
+
+	// 检查默认配置是否可用
+	config := DefaultConfig()
+	t.Logf("默认配置:")
+	t.Logf("  OnnxRuntimeLibPath: %s (exists: %v)", config.OnnxRuntimeLibPath, fileExists(config.OnnxRuntimeLibPath))
+	t.Logf("  DetModelPath: %s (exists: %v)", config.DetModelPath, fileExists(config.DetModelPath))
+	t.Logf("  RecModelPath: %s (exists: %v)", config.RecModelPath, fileExists(config.RecModelPath))
+	t.Logf("  DictPath: %s (exists: %v)", config.DictPath, fileExists(config.DictPath))
+
+	// 检查 IsAvailable
+	available := IsAvailable()
+	t.Logf("OCR IsAvailable: %v", available)
+
+	if !available {
+		t.Log("OCR 默认配置不可用，尝试使用测试配置...")
+		config = setupOCRConfig(t)
+	}
+
+	// 清除缓存
+	ClearCache()
+
+	// 尝试初始化
+	err := InitGlobalRecognizer(config)
+	if err != nil {
+		t.Fatalf("OCR 初始化失败: %v", err)
+	}
+
+	t.Log("OCR 初始化成功!")
+
+	// 创建一个简单的测试图片（白底黑字）
+	testDataDir := getTestDataDir()
+	targetPath := filepath.Join(testDataDir, "target.png")
+
+	if _, err := os.Stat(targetPath); err == nil {
+		t.Logf("使用测试图片: %s", targetPath)
+		results, err := RecognizeText(targetPath)
+		if err != nil {
+			t.Fatalf("OCR 识别失败: %v", err)
+		}
+		t.Logf("识别到 %d 个文本区域", len(results))
+		for i, r := range results {
+			t.Logf("  [%d] 文字: '%s', 置信度: %.2f", i+1, r.Text, r.Confidence)
+		}
+		if len(results) == 0 {
+			t.Log("警告: 未识别到任何文字")
+		}
+	} else {
+		t.Log("测试图片不存在，跳过识别测试")
+	}
+
+	t.Log("=== OCR 可用性测试通过 ===")
+}
+
 func TestRecognizeText(t *testing.T) {
 	testDataDir := getTestDataDir()
 	targetPath := filepath.Join(testDataDir, "target.png")

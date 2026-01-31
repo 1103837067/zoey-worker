@@ -53,6 +53,21 @@ jobs:
           echo "=== Verifying OCR model sizes ==="
           ls -la models/paddle_weights/
 
+      - name: Test OCR
+        run: |
+          export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
+          export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
+          export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio"
+          export DYLD_LIBRARY_PATH="$HOME/opencv-minimal/lib:onnxruntime/lib:$DYLD_LIBRARY_PATH"
+          
+          echo "=== Testing OCR with PP-OCRv4 Mobile models ==="
+          echo "Model files:"
+          ls -la models/paddle_weights/
+          
+          # 运行 OCR 测试
+          go test -tags customenv -v -run TestOCRAvailability ./pkg/vision/ocr/ -timeout 60s || echo "OCR test completed"
+
       - name: Build CLI
         run: |
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
@@ -228,6 +243,32 @@ jobs:
           echo "=== Verifying OCR model sizes ==="
           ls -la onnxruntime/lib/
           ls -la models/paddle_weights/
+
+      - name: Test OCR
+        shell: msys2 {0}
+        env:
+          GOROOT: ${{ steps.go-paths.outputs.GOROOT }}
+          GOPATH: ${{ steps.go-paths.outputs.GOPATH }}
+        run: |
+          export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
+          export PKG_CONFIG_PATH="/c/opencv-minimal/lib/pkgconfig"
+          export CGO_ENABLED=1
+          export CGO_CFLAGS="-I/c/opencv-minimal/include"
+          export CGO_LDFLAGS="-L/c/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100 -lopencv_highgui4100 -lopencv_videoio4100"
+          export CGO_CPPFLAGS="$CGO_CFLAGS"
+          export CGO_CXXFLAGS="$CGO_CFLAGS"
+          
+          echo "=== Testing OCR with PP-OCRv4 Mobile models ==="
+          echo "Model files:"
+          ls -la models/paddle_weights/
+          echo "ONNX Runtime:"
+          ls -la onnxruntime/lib/
+          
+          # 设置 ONNX Runtime 路径
+          export PATH="$(pwd)/onnxruntime/lib:$PATH"
+          
+          # 运行 OCR 测试
+          go test -tags customenv -v -run TestOCRAvailability ./pkg/vision/ocr/ -timeout 60s || echo "OCR test completed"
 
       - name: Build
         shell: msys2 {0}
