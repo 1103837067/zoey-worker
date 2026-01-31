@@ -280,7 +280,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:/opencv-minimal
-          key: opencv-${{ env.OPENCV_VERSION }}-windows-minimal-v3
+          key: opencv-${{ env.OPENCV_VERSION }}-windows-minimal-v4
 
       - name: Build OpenCV from source (minimal)
         if: steps.cache-opencv-win.outputs.cache-hit != 'true'
@@ -322,9 +322,9 @@ jobs:
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_DOCS=OFF \
             -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_ZLIB=OFF \
-            -DBUILD_PNG=OFF \
-            -DBUILD_JPEG=OFF \
+            -DBUILD_ZLIB=ON \
+            -DBUILD_PNG=ON \
+            -DBUILD_JPEG=ON \
             -DBUILD_TIFF=OFF \
             -DBUILD_WEBP=OFF \
             -DBUILD_OPENJPEG=OFF \
