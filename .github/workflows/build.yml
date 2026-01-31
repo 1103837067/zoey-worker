@@ -73,6 +73,11 @@ jobs:
           
           cd cmd/zoeyworker-gui
           
+          # 准备前端文件（复制到 dist 目录供 embed 使用）
+          mkdir -p frontend/dist
+          cp frontend/index.html frontend/dist/
+          cp frontend/app.js frontend/dist/
+          
           # Wails v3: 直接用 go build（前端已经 embed 到代码中）
           go build -tags customenv -ldflags "-s -w" -o ZoeyWorker .
           
@@ -307,6 +312,10 @@ jobs:
           
           # 构建 GUI (Wails v3)
           cd cmd/zoeyworker-gui
+          # 准备前端文件（复制到 dist 目录供 embed 使用）
+          mkdir -p frontend/dist
+          cp frontend/index.html frontend/dist/
+          cp frontend/app.js frontend/dist/
           GOOS=windows GOARCH=amd64 go build -tags customenv -ldflags "-s -w -H windowsgui" -o ZoeyWorker.exe .
           cp ZoeyWorker.exe ../../dist/
 

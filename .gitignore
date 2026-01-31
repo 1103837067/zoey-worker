@@ -44,4 +44,5 @@ models/
 coverage.txt
 coverage.html
 
-# Wails dev (注意：frontend/dist/ 需要提交，因为 Wails v3 使用 embed 嵌入)
+# Wails dev (CI 构建时会自动生成)
+frontend/dist/
