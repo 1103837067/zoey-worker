@@ -131,6 +131,8 @@ jobs:
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio -Wl,-rpath,@executable_path/../Frameworks"
+          # DYLD_LIBRARY_PATH 让 wails bindings 生成时能找到 OpenCV 动态库
+          export DYLD_LIBRARY_PATH="$HOME/opencv-minimal/lib:$DYLD_LIBRARY_PATH"
           
           cd cmd/zoeyworker-gui
           wails build -tags customenv -ldflags "-s -w" -clean
