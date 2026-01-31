@@ -193,8 +193,6 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-opencv
             mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-ffmpeg
-            mingw-w64-x86_64-qt5-base
             zip
             unzip
             wget
@@ -283,133 +281,60 @@ jobs:
           echo "=== Copying ONNX Runtime (purego dynamic loading) ==="
           cp onnxruntime/lib/*.dll dist/ 2>/dev/null || true
           
-          echo "=== Copying OpenCV all modules ==="
-          # 复制所有 OpenCV DLL（确保完整）
-          for dll in /mingw64/bin/libopencv*.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          echo "=== Copying ONLY required OpenCV modules ==="
+          # 只复制项目实际使用的 OpenCV 模块，避免拖入 Qt/VTK 等不需要的依赖
+          # 项目使用: core, imgproc, imgcodecs, features2d, flann, calib3d
+          # 不使用: highgui(需要Qt), videoio(需要FFmpeg), viz(需要VTK)
+          for module in core imgproc imgcodecs features2d flann calib3d photo ml objdetect; do
+            dll="/mingw64/bin/libopencv_${module}-409.dll"
+            [ -f "$dll" ] && cp "$dll" dist/
           done
           
-          echo "=== Copying OpenCV FFmpeg plugin ==="
-          for pattern in "opencv_videoio_ffmpeg*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
+          # 特征点匹配需要的额外模块
+          for module in xfeatures2d; do
+            dll="/mingw64/bin/libopencv_${module}-409.dll"
+            [ -f "$dll" ] && cp "$dll" dist/
           done
           
-          echo "=== Copying FFmpeg libraries ==="
-          for lib in avcodec avformat avutil swscale swresample avfilter avdevice; do
-            for dll in /mingw64/bin/lib${lib}*.dll; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
-          done
-          
-          echo "=== Copying VTK libraries (OpenCV viz dependency) ==="
-          for dll in /mingw64/bin/libvtk*.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-          done
-          
-          echo "=== Copying protobuf/abseil (OpenCV DNN dependency) ==="
-          for dll in /mingw64/bin/libprotobuf*.dll /mingw64/bin/libabsl*.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-          done
-          
-          echo "=== Copying additional runtime libraries ==="
-          # MinGW 运行时
+          echo "=== Copying MinGW runtime ==="
           for dll in /mingw64/bin/libgcc_s_seh-1.dll \
                      /mingw64/bin/libstdc++-6.dll \
                      /mingw64/bin/libwinpthread-1.dll \
-                     /mingw64/bin/libgomp-1.dll \
-                     /mingw64/bin/libgfortran-5.dll \
-                     /mingw64/bin/libquadmath-0.dll; do
+                     /mingw64/bin/libgomp-1.dll; do
             [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
           done
           
-          # 图像编解码库
+          echo "=== Copying image codec libraries ==="
           for pattern in "libjpeg*.dll" "libpng*.dll" "libtiff*.dll" "libwebp*.dll" \
                          "zlib*.dll" "liblzma*.dll" "libzstd*.dll" "libbz2*.dll" \
-                         "libdeflate*.dll" "libjbig*.dll" "libLerc*.dll"; do
+                         "libdeflate*.dll" "libjbig*.dll" "libLerc*.dll" \
+                         "libsharpyuv*.dll" "libopenjp2*.dll"; do
             for dll in /mingw64/bin/$pattern; do
               [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
             done
           done
           
-          # OpenEXR/Imath (图像处理)
-          for pattern in "libOpenEXR*.dll" "libImath*.dll" "libIex*.dll" "libIlmThread*.dll"; do
+          # OpenEXR (imgcodecs 可能需要)
+          for pattern in "libOpenEXR*.dll" "libImath*.dll" "libIex*.dll" "libIlmThread*.dll" "libOpenEXRCore*.dll"; do
             for dll in /mingw64/bin/$pattern; do
               [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
             done
           done
           
-          # TBB (并行计算)
+          echo "=== Copying TBB (parallel computing) ==="
           for dll in /mingw64/bin/libtbb*.dll; do
             [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
           done
           
-          # OpenBLAS (数学计算)
+          echo "=== Copying OpenBLAS (math) ==="
           for dll in /mingw64/bin/libopenblas*.dll; do
             [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
           done
           
-          # Tesseract/Leptonica (OCR)
-          for pattern in "libtesseract*.dll" "libleptonica*.dll" "liblept*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
+          # gfortran/quadmath (OpenBLAS 依赖)
+          for dll in /mingw64/bin/libgfortran*.dll /mingw64/bin/libquadmath*.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
           done
-          
-          # HarfBuzz/FreeType (字体渲染)
-          for pattern in "libharfbuzz*.dll" "libfreetype*.dll" "libglib*.dll" "libintl*.dll" "libiconv*.dll" "libpcre*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
-          done
-          
-          # 视频编解码器
-          for pattern in "libx264*.dll" "libx265*.dll" "libvpx*.dll" "libdav1d*.dll" \
-                         "libmp3lame*.dll" "libopus*.dll" "libvorbis*.dll" "libogg*.dll" \
-                         "libSvtAv1*.dll" "libaom*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
-          done
-          
-          # 其他可能需要的库
-          for pattern in "libarchive*.dll" "libceres*.dll" "libgflags*.dll" "libglog*.dll" \
-                         "libjsoncpp*.dll" "libpugixml*.dll" "libdouble-conversion*.dll" \
-                         "libcholmod*.dll" "libspqr*.dll" "libamd*.dll" "libcamd*.dll" \
-                         "libccolamd*.dll" "libcolamd*.dll" "libsuitesparseconfig*.dll" \
-                         "libmetis*.dll" "libopenvino*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
-          done
-          
-          echo "=== Copying Qt libraries (OpenCV highgui dependency) ==="
-          # Qt5 核心库
-          for pattern in "Qt5Core.dll" "Qt5Gui.dll" "Qt5Widgets.dll" "Qt5OpenGL.dll" \
-                         "Qt5Test.dll" "Qt5Concurrent.dll" "Qt5Network.dll" "Qt5Xml.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
-          done
-          
-          # Qt5 插件 (platforms)
-          mkdir -p dist/platforms
-          if [ -d "/mingw64/share/qt5/plugins/platforms" ]; then
-            cp /mingw64/share/qt5/plugins/platforms/*.dll dist/platforms/ 2>/dev/null || true
-          fi
-          
-          # Qt5 插件 (imageformats)
-          mkdir -p dist/imageformats
-          if [ -d "/mingw64/share/qt5/plugins/imageformats" ]; then
-            cp /mingw64/share/qt5/plugins/imageformats/*.dll dist/imageformats/ 2>/dev/null || true
-          fi
-          
-          # Qt5 插件 (styles)
-          mkdir -p dist/styles
-          if [ -d "/mingw64/share/qt5/plugins/styles" ]; then
-            cp /mingw64/share/qt5/plugins/styles/*.dll dist/styles/ 2>/dev/null || true
-          fi
           
           echo "=== Multi-round dependency check (like macOS) ==="
           # 多轮检查，确保所有间接依赖都被复制（macOS 需要 3-4 轮）
