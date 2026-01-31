@@ -7,7 +7,6 @@ require (
 	github.com/go-vgo/robotgo v1.0.0
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/shirou/gopsutil/v4 v4.25.10
-	github.com/vcaesar/gcv v0.44.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	gocv.io/x/gocv v0.41.0
 	golang.org/x/image v0.35.0
@@ -22,7 +21,6 @@ require (
 	github.com/gen2brain/shm v0.1.1 // indirect
 	github.com/getcharzp/onnxruntime_purego v0.0.0-20260118041137-401482b32507 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-vgo/gt v0.42.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect

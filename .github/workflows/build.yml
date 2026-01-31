@@ -20,34 +20,35 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-minimal
+          key: opencv-${{ env.OPENCV_VERSION }}-macos-minimal-v2
+
       - name: Install Build Dependencies
         run: |
           brew install cmake ninja pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Build OpenCV from source (minimal)
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
         run: |
           echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
           curl -sL "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
-          curl -sL "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
           
-          echo "=== Building OpenCV (minimal modules only) ==="
+          echo "=== Building OpenCV (gocv required modules only) ==="
           mkdir -p opencv-${OPENCV_VERSION}/build
           cd opencv-${OPENCV_VERSION}/build
           
-          # 关键配置说明：
-          # - BUILD_LIST: gocv 需要的所有模块（即使项目不直接使用，gocv 编译时需要头文件）
-          # - WITH_*=OFF: 禁用所有 GUI/视频后端，避免引入 Qt/FFmpeg
-          # - BUILD_*=OFF: 使用系统库，避免内置库与 Xcode 16+ 冲突
-          # - OPENCV_GENERATE_PKGCONFIG=OFF: 避免 CMake 版本兼容问题
-          # gocv 需要: core,face,videoio,imgproc,highgui,imgcodecs,objdetect,features2d,
-          #            video,dnn,xfeatures2d,plot,tracking,img_hash,calib3d,bgsegm,photo,
-          #            aruco(已合并到objdetect),wechat_qrcode,ximgproc
+          # gocv 核心依赖模块（不需要 contrib）:
+          # core, imgproc, imgcodecs, features2d, flann, calib3d, 
+          # objdetect, dnn, video, photo, highgui, videoio
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
-            -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
-            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,objdetect,dnn,video,photo,ml,highgui,videoio,face,tracking,img_hash,bgsegm,plot,wechat_qrcode,ximgproc,xfeatures2d,xphoto,xobjdetect \
+            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,objdetect,dnn,video,photo,highgui,videoio \
             -DWITH_QT=OFF \
             -DWITH_GTK=OFF \
             -DWITH_FFMPEG=OFF \
@@ -84,18 +85,20 @@ jobs:
           ninja -j$(sysctl -n hw.ncpu)
           ninja install
           
-          # 手动创建 pkgconfig 文件（避免 CMake 脚本兼容问题）
+          # 手动创建 pkgconfig 文件
           mkdir -p $HOME/opencv-minimal/lib/pkgconfig
-          echo 'prefix=${pcfiledir}/../..' > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'exec_prefix=${prefix}' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'libdir=${exec_prefix}/lib' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'includedir=${prefix}/include/opencv4' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo '' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'Name: OpenCV' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'Description: Open Source Computer Vision Library' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'Version: 4.10.0' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_ml -lopencv_highgui -lopencv_videoio -lopencv_face -lopencv_tracking -lopencv_img_hash -lopencv_bgsegm -lopencv_plot -lopencv_wechat_qrcode -lopencv_ximgproc -lopencv_xfeatures2d -lopencv_xphoto -lopencv_xobjdetect' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
-          echo 'Cflags: -I${includedir}' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'PKGEOF'
+          prefix=${pcfiledir}/../..
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib
+          includedir=${prefix}/include/opencv4
+          
+          Name: OpenCV
+          Description: Open Source Computer Vision Library
+          Version: 4.10.0
+          Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio
+          Cflags: -I${includedir}
+          PKGEOF
           
           echo "=== OpenCV build complete ==="
           ls -la $HOME/opencv-minimal/lib/
@@ -117,7 +120,7 @@ jobs:
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
-          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_ml -lopencv_highgui -lopencv_videoio -lopencv_face -lopencv_tracking -lopencv_img_hash -lopencv_bgsegm -lopencv_plot -lopencv_wechat_qrcode -lopencv_ximgproc -lopencv_xfeatures2d -lopencv_xphoto -lopencv_xobjdetect -Wl,-rpath,@executable_path/../Frameworks"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio -Wl,-rpath,@executable_path/../Frameworks"
           
           mkdir -p dist
           go build -tags customenv -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
@@ -127,7 +130,7 @@ jobs:
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
-          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_ml -lopencv_highgui -lopencv_videoio -lopencv_face -lopencv_tracking -lopencv_img_hash -lopencv_bgsegm -lopencv_plot -lopencv_wechat_qrcode -lopencv_ximgproc -lopencv_xfeatures2d -lopencv_xphoto -lopencv_xobjdetect -Wl,-rpath,@executable_path/../Frameworks"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio -Wl,-rpath,@executable_path/../Frameworks"
           
           cd cmd/zoeyworker-gui
           wails build -tags customenv -ldflags "-s -w" -clean
@@ -270,24 +273,29 @@ jobs:
             wget
             git
 
+      - name: Cache OpenCV
+        id: cache-opencv-win
+        uses: actions/cache@v4
+        with:
+          path: C:/opencv-minimal
+          key: opencv-${{ env.OPENCV_VERSION }}-windows-minimal-v2
+
       - name: Build OpenCV from source (minimal)
+        if: steps.cache-opencv-win.outputs.cache-hit != 'true'
         shell: msys2 {0}
         run: |
           echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
           wget -q "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv.tar.gz
-          wget -q "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv_contrib.tar.gz
           tar xzf opencv.tar.gz
-          tar xzf opencv_contrib.tar.gz
           
-          echo "=== Building OpenCV (minimal modules only) ==="
+          echo "=== Building OpenCV (gocv required modules only) ==="
           mkdir -p opencv-${OPENCV_VERSION}/build
           cd opencv-${OPENCV_VERSION}/build
           
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/mingw64 \
-            -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
-            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,objdetect,dnn,video,photo,ml,highgui,videoio,face,tracking,img_hash,bgsegm,plot,wechat_qrcode,ximgproc,xfeatures2d,xphoto,xobjdetect \
+            -DCMAKE_INSTALL_PREFIX=/c/opencv-minimal \
+            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,objdetect,dnn,video,photo,highgui,videoio \
             -DWITH_QT=OFF \
             -DWITH_GTK=OFF \
             -DWITH_FFMPEG=OFF \
@@ -325,21 +333,23 @@ jobs:
           ninja install
           
           # 手动创建 pkgconfig 文件
-          mkdir -p /mingw64/lib/pkgconfig
-          echo 'prefix=/mingw64' > /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'exec_prefix=${prefix}' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'libdir=${exec_prefix}/lib' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'includedir=${prefix}/include/opencv4' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo '' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'Name: OpenCV' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'Description: Open Source Computer Vision Library' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'Version: 4.10.0' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_ml -lopencv_highgui -lopencv_videoio -lopencv_face -lopencv_tracking -lopencv_img_hash -lopencv_bgsegm -lopencv_plot -lopencv_wechat_qrcode -lopencv_ximgproc -lopencv_xfeatures2d -lopencv_xphoto -lopencv_xobjdetect' >> /mingw64/lib/pkgconfig/opencv4.pc
-          echo 'Cflags: -I${includedir}' >> /mingw64/lib/pkgconfig/opencv4.pc
+          mkdir -p /c/opencv-minimal/lib/pkgconfig
+          cat > /c/opencv-minimal/lib/pkgconfig/opencv4.pc << 'PKGEOF'
+          prefix=/c/opencv-minimal
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib
+          includedir=${prefix}/include/opencv4
+          
+          Name: OpenCV
+          Description: Open Source Computer Vision Library
+          Version: 4.10.0
+          Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio
+          Cflags: -I${includedir}
+          PKGEOF
           
           echo "=== OpenCV build complete ==="
-          ls -la /mingw64/bin/libopencv*.dll || echo "No OpenCV DLLs found in /mingw64/bin"
-          ls -la /mingw64/lib/libopencv*.dll.a || echo "No OpenCV import libs found"
+          ls -la /c/opencv-minimal/bin/libopencv*.dll || echo "No OpenCV DLLs found"
+          ls -la /c/opencv-minimal/lib/libopencv*.dll.a || echo "No OpenCV import libs found"
 
       - name: Download ONNX Runtime & OCR Models
         shell: msys2 {0}
@@ -367,10 +377,10 @@ jobs:
         run: |
           export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
+          export PKG_CONFIG_PATH="/c/opencv-minimal/lib/pkgconfig"
           export CGO_ENABLED=1
-          export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
-          export CGO_LDFLAGS="$(pkg-config --libs opencv4)"
+          export CGO_CFLAGS="-I/c/opencv-minimal/include/opencv4"
+          export CGO_LDFLAGS="-L/c/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio"
           export CGO_CPPFLAGS="$CGO_CFLAGS"
           export CGO_CXXFLAGS="$CGO_CFLAGS"
           export OPENCV_GO_SKIP_LINKING=1
@@ -419,7 +429,7 @@ jobs:
           cp onnxruntime/lib/*.dll dist/ 2>/dev/null || true
           
           echo "=== Copying OpenCV DLLs ==="
-          for dll in /mingw64/bin/libopencv*.dll; do
+          for dll in /c/opencv-minimal/bin/libopencv*.dll; do
             [ -f "$dll" ] && cp "$dll" dist/
           done
           
