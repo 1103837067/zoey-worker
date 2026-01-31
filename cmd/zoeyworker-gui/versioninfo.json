@@ -39,5 +39,5 @@
     }
   },
   "IconPath": "build/windows/icon.ico",
-  "ManifestPath": "build/windows/wails.exe.manifest"
+  "ManifestPath": "build/windows/ZoeyWorker.exe.manifest"
 }
