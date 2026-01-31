@@ -3,7 +3,6 @@ package auto
 import (
 	"fmt"
 	"image"
-	"runtime"
 	"strings"
 	"time"
 
