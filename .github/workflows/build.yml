@@ -201,15 +201,13 @@ jobs:
         run: |
           echo "=== Downloading pre-built OpenCV ${OPENCV_VERSION} ==="
           mkdir -p /c/opencv-minimal
-          curl -L "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
-          ls -la opencv.zip
+          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
           unzip -q opencv.zip -d /c/opencv-minimal
           echo "=== OpenCV directory structure ==="
           ls -la /c/opencv-minimal/
-          ls -la /c/opencv-minimal/include/ || echo "No include dir"
-          ls -la /c/opencv-minimal/include/opencv4/ || echo "No opencv4 dir"
-          ls -la /c/opencv-minimal/lib/ || echo "No lib dir"
-          ls -la /c/opencv-minimal/bin/ || echo "No bin dir"
+          ls -la /c/opencv-minimal/include/
+          ls -la /c/opencv-minimal/x64/mingw/lib/ || echo "Checking alternative lib path..."
+          ls -la /c/opencv-minimal/x64/mingw/bin/ || echo "Checking alternative bin path..."
 
       - name: Download ONNX Runtime & OCR Models
         shell: msys2 {0}
@@ -237,10 +235,11 @@ jobs:
         run: |
           export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           
+          # Windows OpenCV 目录结构: include/opencv2, x64/mingw/lib, x64/mingw/bin
           export PKG_CONFIG_PATH="/c/opencv-minimal/lib/pkgconfig"
           export CGO_ENABLED=1
-          export CGO_CFLAGS="-I/c/opencv-minimal/include/opencv4"
-          export CGO_LDFLAGS="-L/c/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio"
+          export CGO_CFLAGS="-I/c/opencv-minimal/include"
+          export CGO_LDFLAGS="-L/c/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100 -lopencv_highgui4100 -lopencv_videoio4100"
           export CGO_CPPFLAGS="$CGO_CFLAGS"
           export CGO_CXXFLAGS="$CGO_CFLAGS"
           export OPENCV_GO_SKIP_LINKING=1
@@ -288,7 +287,8 @@ jobs:
           cp onnxruntime/lib/*.dll dist/ 2>/dev/null || true
           
           echo "=== Copying OpenCV DLLs ==="
-          for dll in /c/opencv-minimal/bin/libopencv*.dll; do
+          # Windows OpenCV DLL 在 x64/mingw/bin 目录
+          for dll in /c/opencv-minimal/x64/mingw/bin/libopencv*.dll; do
             [ -f "$dll" ] && cp "$dll" dist/
           done
           
