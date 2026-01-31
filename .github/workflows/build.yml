@@ -194,6 +194,7 @@ jobs:
             mingw-w64-x86_64-opencv
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-ffmpeg
+            mingw-w64-x86_64-qt5-base
             zip
             unzip
             wget
@@ -382,6 +383,33 @@ jobs:
               [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
             done
           done
+          
+          echo "=== Copying Qt libraries (OpenCV highgui dependency) ==="
+          # Qt5 核心库
+          for pattern in "Qt5Core.dll" "Qt5Gui.dll" "Qt5Widgets.dll" "Qt5OpenGL.dll" \
+                         "Qt5Test.dll" "Qt5Concurrent.dll" "Qt5Network.dll" "Qt5Xml.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          # Qt5 插件 (platforms)
+          mkdir -p dist/platforms
+          if [ -d "/mingw64/share/qt5/plugins/platforms" ]; then
+            cp /mingw64/share/qt5/plugins/platforms/*.dll dist/platforms/ 2>/dev/null || true
+          fi
+          
+          # Qt5 插件 (imageformats)
+          mkdir -p dist/imageformats
+          if [ -d "/mingw64/share/qt5/plugins/imageformats" ]; then
+            cp /mingw64/share/qt5/plugins/imageformats/*.dll dist/imageformats/ 2>/dev/null || true
+          fi
+          
+          # Qt5 插件 (styles)
+          mkdir -p dist/styles
+          if [ -d "/mingw64/share/qt5/plugins/styles" ]; then
+            cp /mingw64/share/qt5/plugins/styles/*.dll dist/styles/ 2>/dev/null || true
+          fi
           
           echo "=== Multi-round dependency check (like macOS) ==="
           # 多轮检查，确保所有间接依赖都被复制（macOS 需要 3-4 轮）
