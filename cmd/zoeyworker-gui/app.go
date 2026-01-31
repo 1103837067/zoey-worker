@@ -6,7 +6,6 @@ import (
 	"os"
 	"runtime"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
@@ -14,7 +13,7 @@ import (
 	"github.com/zoeyai/zoeyworker/pkg/plugin"
 )
 
-// App 应用结构体
+// App 应用结构体（作为 Wails v3 Service）
 type App struct {
 	ctx                      context.Context
 	grpcClient               *grpc.Client
@@ -30,8 +29,8 @@ func NewApp() *App {
 	}
 }
 
-// startup 应用启动时调用
-func (a *App) startup(ctx context.Context) {
+// ServiceStartup Wails v3 服务启动时调用
+func (a *App) ServiceStartup(ctx context.Context, options ...interface{}) error {
 	a.ctx = ctx
 	a.grpcClient = grpc.NewClient(nil)
 	a.executor = executor.NewExecutor(a.grpcClient)
@@ -63,13 +62,16 @@ func (a *App) startup(ctx context.Context) {
 	a.grpcClient.SetExecutorStatusCallback(func() (string, string, string, int64, int) {
 		return a.executor.GetStatus()
 	})
+
+	return nil
 }
 
-// shutdown 应用关闭时调用
-func (a *App) shutdown(ctx context.Context) {
+// ServiceShutdown Wails v3 服务关闭时调用
+func (a *App) ServiceShutdown() error {
 	if a.grpcClient != nil && a.grpcClient.IsConnected() {
 		a.grpcClient.Disconnect()
 	}
+	return nil
 }
 
 // ==================== 配置管理 ====================
@@ -81,15 +83,12 @@ type ConfigData struct {
 	AccessKey   string `json:"access_key"`
 	SecretKey   string `json:"secret_key"`
 	AutoConnect bool   `json:"auto_connect"`
-
 	// 重连设置
 	AutoReconnect     bool `json:"auto_reconnect"`
-	ReconnectInterval int  `json:"reconnect_interval"`
-
+	ReconnectInterval int  `json:"reconnect_interval"` // 秒
 	// 日志设置
 	LogLevel string `json:"log_level"`
-
-	// GUI 设置
+	// 界面设置
 	MinimizeToTray bool `json:"minimize_to_tray"`
 	StartMinimized bool `json:"start_minimized"`
 }
@@ -98,16 +97,7 @@ type ConfigData struct {
 func (a *App) LoadConfig() ConfigData {
 	cfg, err := a.configMgr.Load()
 	if err != nil {
-		defaults := config.DefaultConnectionConfig()
-		return ConfigData{
-			ServerURL:         defaults.ServerURL,
-			AutoConnect:       defaults.AutoConnect,
-			AutoReconnect:     defaults.AutoReconnect,
-			ReconnectInterval: defaults.ReconnectInterval,
-			LogLevel:          defaults.LogLevel,
-			MinimizeToTray:    defaults.MinimizeToTray,
-			StartMinimized:    defaults.StartMinimized,
-		}
+		cfg = config.DefaultConnectionConfig()
 	}
 	return ConfigData{
 		ServerURL:         cfg.ServerURL,
@@ -124,21 +114,23 @@ func (a *App) LoadConfig() ConfigData {
 
 // SaveConfig 保存配置
 func (a *App) SaveConfig(data ConfigData) error {
-	cfg := &config.ConnectionConfig{
-		ServerURL:         data.ServerURL,
-		AccessKey:         data.AccessKey,
-		SecretKey:         data.SecretKey,
-		AutoConnect:       data.AutoConnect,
-		AutoReconnect:     data.AutoReconnect,
-		ReconnectInterval: data.ReconnectInterval,
-		LogLevel:          data.LogLevel,
-		MinimizeToTray:    data.MinimizeToTray,
-		StartMinimized:    data.StartMinimized,
+	cfg, err := a.configMgr.Load()
+	if err != nil {
+		cfg = config.DefaultConnectionConfig()
 	}
+	cfg.ServerURL = data.ServerURL
+	cfg.AccessKey = data.AccessKey
+	cfg.SecretKey = data.SecretKey
+	cfg.AutoConnect = data.AutoConnect
+	cfg.AutoReconnect = data.AutoReconnect
+	cfg.ReconnectInterval = data.ReconnectInterval
+	cfg.LogLevel = data.LogLevel
+	cfg.MinimizeToTray = data.MinimizeToTray
+	cfg.StartMinimized = data.StartMinimized
 	return a.configMgr.Save(cfg)
 }
 
-// ==================== 连接管理 ====================
+// ==================== gRPC 连接管理 ====================
 
 // ConnectResult 连接结果
 type ConnectResult struct {
@@ -148,31 +140,33 @@ type ConnectResult struct {
 	AgentName string `json:"agent_name"`
 }
 
-// Connect 连接服务端
+// Connect 连接到服务器
 func (a *App) Connect(serverURL, accessKey, secretKey string) ConnectResult {
-	if a.grpcClient == nil {
-		return ConnectResult{Success: false, Message: "客户端未初始化"}
+	// 保存配置
+	cfg, _ := a.configMgr.Load()
+	if cfg == nil {
+		cfg = config.DefaultConnectionConfig()
 	}
+	cfg.ServerURL = serverURL
+	cfg.AccessKey = accessKey
+	cfg.SecretKey = secretKey
+	_ = a.configMgr.Save(cfg)
 
+	// 连接（Connect 方法会自动启动 TaskStream）
 	err := a.grpcClient.Connect(serverURL, accessKey, secretKey)
 	if err != nil {
-		return ConnectResult{Success: false, Message: err.Error()}
+		return ConnectResult{
+			Success: false,
+			Message: fmt.Sprintf("连接失败: %v", err),
+		}
 	}
 
-	status, agentID, agentName := a.grpcClient.GetStatus()
-	if status == grpc.StatusConnected {
-		// 连接成功后保存配置
-		a.SaveConfig(ConfigData{
-			ServerURL:   serverURL,
-			AccessKey:   accessKey,
-			SecretKey:   secretKey,
-			AutoConnect: false,
-		})
-	}
+	// 获取状态
+	_, agentID, agentName := a.grpcClient.GetStatus()
 
 	return ConnectResult{
-		Success:   status == grpc.StatusConnected,
-		Message:   "",
+		Success:   true,
+		Message:   "连接成功",
 		AgentID:   agentID,
 		AgentName: agentName,
 	}
@@ -180,30 +174,27 @@ func (a *App) Connect(serverURL, accessKey, secretKey string) ConnectResult {
 
 // Disconnect 断开连接
 func (a *App) Disconnect() error {
-	if a.grpcClient == nil {
-		return nil
+	if a.grpcClient != nil {
+		a.grpcClient.Disconnect()
 	}
-	return a.grpcClient.Disconnect()
+	return nil
 }
 
-// StatusInfo 状态信息
-type StatusInfo struct {
+// StatusResult 状态结果
+type StatusResult struct {
 	Connected bool   `json:"connected"`
-	Status    string `json:"status"`
 	AgentID   string `json:"agent_id"`
 	AgentName string `json:"agent_name"`
 }
 
 // GetStatus 获取连接状态
-func (a *App) GetStatus() StatusInfo {
+func (a *App) GetStatus() StatusResult {
 	if a.grpcClient == nil {
-		return StatusInfo{Connected: false, Status: "disconnected"}
+		return StatusResult{Connected: false}
 	}
-
-	status, agentID, agentName := a.grpcClient.GetStatus()
-	return StatusInfo{
+	_, agentID, agentName := a.grpcClient.GetStatus()
+	return StatusResult{
 		Connected: a.grpcClient.IsConnected(),
-		Status:    string(status),
 		AgentID:   agentID,
 		AgentName: agentName,
 	}
@@ -213,24 +204,24 @@ func (a *App) GetStatus() StatusInfo {
 
 // LogEntry 日志条目
 type LogEntry struct {
-	Timestamp string `json:"timestamp"`
-	Level     string `json:"level"`
-	Message   string `json:"message"`
+	Time    string `json:"time"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
 }
 
 // GetLogs 获取日志
-func (a *App) GetLogs(limit int) []LogEntry {
+func (a *App) GetLogs(count int) []LogEntry {
 	if a.grpcClient == nil {
 		return []LogEntry{}
 	}
 
-	logs := a.grpcClient.GetLogs(limit)
+	logs := a.grpcClient.GetLogs(count)
 	result := make([]LogEntry, len(logs))
 	for i, log := range logs {
 		result[i] = LogEntry{
-			Timestamp: log.Timestamp,
-			Level:     log.Level,
-			Message:   log.Message,
+			Time:    log.Timestamp,
+			Level:   log.Level,
+			Message: log.Message,
 		}
 	}
 	return result
@@ -240,9 +231,9 @@ func (a *App) GetLogs(limit int) []LogEntry {
 
 // SystemInfo 系统信息
 type SystemInfo struct {
-	Hostname string `json:"hostname"`
 	Platform string `json:"platform"`
-	Version  string `json:"version"`
+	Hostname string `json:"hostname"`
+	Arch     string `json:"arch"`
 }
 
 // GetSystemInfo 获取系统信息
@@ -253,39 +244,38 @@ func (a *App) GetSystemInfo() SystemInfo {
 		platform = "macOS"
 	} else if platform == "windows" {
 		platform = "Windows"
+	} else if platform == "linux" {
+		platform = "Linux"
 	}
 
 	return SystemInfo{
-		Hostname: hostname,
 		Platform: platform,
-		Version:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		Hostname: hostname,
+		Arch:     runtime.GOARCH,
 	}
 }
 
-// ==================== 权限管理 (macOS) ====================
+// ==================== 权限管理 ====================
 
-// PermissionInfo 权限信息
-type PermissionInfo struct {
-	Accessibility   bool   `json:"accessibility"`
-	ScreenRecording bool   `json:"screen_recording"`
-	AllGranted      bool   `json:"all_granted"`
-	Message         string `json:"message"`
+// PermissionsInfo 权限信息
+type PermissionsInfo struct {
+	Accessibility    bool `json:"accessibility"`
+	ScreenRecording  bool `json:"screen_recording"`
 }
 
-// CheckPermissions 检查权限状态
-func (a *App) CheckPermissions() PermissionInfo {
+// CheckPermissions 检查系统权限
+func (a *App) CheckPermissions() PermissionsInfo {
 	status := auto.CheckPermissions()
-	return PermissionInfo{
+	if status == nil {
+		return PermissionsInfo{
+			Accessibility:   true,
+			ScreenRecording: true,
+		}
+	}
+	return PermissionsInfo{
 		Accessibility:   status.Accessibility,
 		ScreenRecording: status.ScreenRecording,
-		AllGranted:      status.AllGranted,
-		Message:         auto.GetPermissionInstructions(status),
 	}
-}
-
-// RequestAccessibilityPermission 请求辅助功能权限
-func (a *App) RequestAccessibilityPermission() bool {
-	return auto.RequestAccessibilityPermission()
 }
 
 // OpenAccessibilitySettings 打开辅助功能设置
@@ -300,21 +290,16 @@ func (a *App) OpenScreenRecordingSettings() {
 
 // ==================== OCR 插件管理 ====================
 
-// OCRPluginStatus OCR 插件状态
-type OCRPluginStatus struct {
-	Installed   bool    `json:"installed"`
-	Downloading bool    `json:"downloading"`
-	Progress    float64 `json:"progress"`
+// OCRPluginStatusResult OCR 插件状态
+type OCRPluginStatusResult struct {
+	Installed bool `json:"installed"`
 }
 
 // GetOCRPluginStatus 获取 OCR 插件状态
-func (a *App) GetOCRPluginStatus() OCRPluginStatus {
+func (a *App) GetOCRPluginStatus() OCRPluginStatusResult {
 	p := plugin.GetOCRPlugin()
-	status := p.GetStatus()
-	return OCRPluginStatus{
-		Installed:   status.Installed,
-		Downloading: status.Downloading,
-		Progress:    status.Progress,
+	return OCRPluginStatusResult{
+		Installed: p.IsInstalled(),
 	}
 }
 
@@ -322,20 +307,14 @@ func (a *App) GetOCRPluginStatus() OCRPluginStatus {
 func (a *App) InstallOCRPlugin() error {
 	p := plugin.GetOCRPlugin()
 
-	// 设置进度回调，通过事件发送给前端
+	// 设置进度回调
 	p.SetProgressCallback(func(progress float64) {
-		wailsRuntime.EventsEmit(a.ctx, "ocr-install-progress", progress)
+		// Wails v3 暂时不使用事件系统，简化处理
+		fmt.Printf("OCR Install progress: %.0f%%\n", progress*100)
 	})
 
 	// 开始安装
-	err := p.Install()
-	if err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "ocr-install-error", err.Error())
-		return err
-	}
-
-	wailsRuntime.EventsEmit(a.ctx, "ocr-install-complete", true)
-	return nil
+	return p.Install()
 }
 
 // UninstallOCRPlugin 卸载 OCR 插件
@@ -348,17 +327,22 @@ func (a *App) UninstallOCRPlugin() error {
 
 // ShowWindow 显示窗口
 func (a *App) ShowWindow() {
-	wailsRuntime.WindowShow(a.ctx)
-	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
-	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
+	if mainWindow != nil {
+		mainWindow.Show()
+		mainWindow.Focus()
+	}
 }
 
 // HideWindow 隐藏窗口
 func (a *App) HideWindow() {
-	wailsRuntime.WindowHide(a.ctx)
+	if mainWindow != nil {
+		mainWindow.Hide()
+	}
 }
 
 // QuitApp 退出应用
 func (a *App) QuitApp() {
-	wailsRuntime.Quit(a.ctx)
+	if mainApp != nil {
+		mainApp.Quit()
+	}
 }

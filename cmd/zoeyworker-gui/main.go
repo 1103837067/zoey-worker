@@ -1,77 +1,106 @@
 package main
 
 import (
-	"context"
 	"embed"
+	"log"
+	"runtime"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 //go:embed frontend/*
 var assets embed.FS
 
+//go:embed build/appicon.png
+var appIcon []byte
+
+var (
+	mainApp    *application.App
+	mainWindow *application.WebviewWindow
+)
+
 func main() {
 	// 创建应用实例
 	app := NewApp()
 
-	// 初始化系统托盘（仅 Windows 支持）
-	initSystray(app)
-
-	// 创建 Wails 应用
-	err := wails.Run(&options.App{
-		Title:     "Zoey Worker",
-		Width:     480,
-		Height:    580,
-		MinWidth:  400,
-		MinHeight: 500,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+	// 创建 Wails v3 应用
+	mainApp = application.New(application.Options{
+		Name:        "Zoey Worker",
+		Description: "UI 自动化执行客户端",
+		Services: []application.Service{
+			application.NewService(app),
 		},
-		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1}, // 白色背景
-		OnStartup:        app.startup,
-		OnShutdown: func(ctx context.Context) {
-			quitSystray()
-			app.shutdown(ctx)
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 		},
-		OnBeforeClose: func(ctx context.Context) (prevent bool) {
-			// 关闭窗口时隐藏而不是退出
-			cfg := app.LoadConfig()
-			if cfg.MinimizeToTray {
-				wailsRuntime.WindowHide(ctx)
-				// 发送事件通知前端显示提示
-				if !app.hasShownTrayNotification {
-					app.hasShownTrayNotification = true
-					wailsRuntime.EventsEmit(ctx, "minimized-to-background")
-				}
-				return true // 阻止关闭
-			}
-			return false // 允许关闭
-		},
-		Bind: []interface{}{
-			app,
-		},
-		// macOS 配置
-		Mac: &mac.Options{
-			TitleBar: mac.TitleBarDefault(),
-			About: &mac.AboutInfo{
-				Title:   "Zoey Worker",
-				Message: "UI 自动化执行客户端 v1.0.0",
-			},
-		},
-		// Windows 配置
-		Windows: &windows.Options{
-			WebviewIsTransparent: false,
-			WindowIsTranslucent:  false,
-			DisableWindowIcon:    false,
+		Mac: application.MacOptions{
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 
+	// 创建主窗口
+	mainWindow = mainApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:            "Zoey Worker",
+		Width:            480,
+		Height:           580,
+		MinWidth:         400,
+		MinHeight:        500,
+		BackgroundColour: application.NewRGB(255, 255, 255),
+		URL:              "/frontend/index.html",
+		Hidden:           false,
+		Windows: application.WindowsWindow{
+			HiddenOnTaskbar: false,
+		},
+	})
+
+	// 设置系统托盘
+	setupSystemTray(mainApp, mainWindow, app)
+
+	// 运行应用
+	err := mainApp.Run()
 	if err != nil {
-		println("Error:", err.Error())
+		log.Fatal(err)
 	}
+}
+
+// setupSystemTray 设置系统托盘
+func setupSystemTray(app *application.App, window *application.WebviewWindow, appService *App) {
+	// 创建系统托盘
+	tray := app.SystemTray.New()
+
+	// 设置图标
+	if runtime.GOOS == "darwin" {
+		tray.SetTemplateIcon(appIcon)
+	} else {
+		tray.SetIcon(appIcon)
+	}
+	tray.SetTooltip("Zoey Worker - UI 自动化执行客户端")
+
+	// 点击托盘图标显示/隐藏窗口
+	tray.OnClick(func() {
+		if window.IsVisible() {
+			window.Hide()
+		} else {
+			window.Show()
+			window.Focus()
+		}
+	})
+
+	// 创建托盘菜单
+	trayMenu := app.NewMenu()
+
+	// 显示窗口
+	trayMenu.Add("显示窗口").OnClick(func(ctx *application.Context) {
+		window.Show()
+		window.Focus()
+	})
+
+	trayMenu.AddSeparator()
+
+	// 退出
+	trayMenu.Add("退出").OnClick(func(ctx *application.Context) {
+		app.Quit()
+	})
+
+	tray.SetMenu(trayMenu)
 }

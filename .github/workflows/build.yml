@@ -26,7 +26,10 @@ jobs:
       - name: Install Build Dependencies
         run: |
           brew install pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
-          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          # Install Wails v3
+          go install github.com/wailsapp/wails/v3@latest
+          # Install task runner
+          go install github.com/go-task/task/v3/cmd/task@latest
 
       - name: Download Pre-built OpenCV
         run: |
@@ -63,7 +66,7 @@ jobs:
           mkdir -p dist
           go build -tags customenv -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
 
-      - name: Build GUI App
+      - name: Build GUI App (Wails v3)
         run: |
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
@@ -72,7 +75,38 @@ jobs:
           export DYLD_LIBRARY_PATH="$HOME/opencv-minimal/lib:$DYLD_LIBRARY_PATH"
           
           cd cmd/zoeyworker-gui
-          wails build -tags customenv -ldflags "-s -w" -clean
+          # Use task to build with Wails v3
+          task build
+          
+          # Create app bundle structure
+          mkdir -p build/bin/ZoeyWorker.app/Contents/MacOS
+          mkdir -p build/bin/ZoeyWorker.app/Contents/Resources
+          cp ZoeyWorker build/bin/ZoeyWorker.app/Contents/MacOS/
+          cp build/appicon.png build/bin/ZoeyWorker.app/Contents/Resources/ || true
+          cat > build/bin/ZoeyWorker.app/Contents/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>ZoeyWorker</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.zoey.worker</string>
+              <key>CFBundleName</key>
+              <string>ZoeyWorker</string>
+              <key>CFBundleVersion</key>
+              <string>1.0.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleIconFile</key>
+              <string>appicon</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>LSUIElement</key>
+              <false/>
+          </dict>
+          </plist>
+          PLIST
 
       - name: Package Self-Contained App
         run: |
@@ -201,8 +235,12 @@ jobs:
           echo "GOROOT=$goRoot" >> $env:GITHUB_OUTPUT
           echo "GOPATH=$goPath" >> $env:GITHUB_OUTPUT
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install Build Tools
+        run: |
+          # Install Wails v3
+          go install github.com/wailsapp/wails/v3@latest
+          # Install task runner
+          go install github.com/go-task/task/v3/cmd/task@latest
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -271,10 +309,10 @@ jobs:
           # 构建 CLI
           go build -tags customenv -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-cli.exe ./cmd/zoeyworker
           
-          # 构建 GUI
+          # 构建 GUI (Wails v3)
           cd cmd/zoeyworker-gui
-          wails build -tags customenv -skipbindings -ldflags "-s -w"
-          cp build/bin/ZoeyWorker.exe ../../dist/
+          GOOS=windows GOARCH=amd64 go build -tags customenv -ldflags "-s -w -H windowsgui" -o ZoeyWorker.exe .
+          cp ZoeyWorker.exe ../../dist/
 
       - name: Package Self-Contained Distribution
         shell: msys2 {0}

@@ -1,6 +1,29 @@
 /**
- * Zoey Worker GUI - 前端应用
+ * Zoey Worker GUI - 前端应用 (Wails v3)
  */
+
+// ========== Wails v3 API ==========
+const wails = window.wails || { Call: () => Promise.reject('Wails not loaded') }
+
+// 封装后端调用
+const App = {
+  LoadConfig: () => wails.Call('main.App.LoadConfig'),
+  SaveConfig: (config) => wails.Call('main.App.SaveConfig', config),
+  Connect: (url, accessKey, secretKey) => wails.Call('main.App.Connect', url, accessKey, secretKey),
+  Disconnect: () => wails.Call('main.App.Disconnect'),
+  GetStatus: () => wails.Call('main.App.GetStatus'),
+  GetLogs: (count) => wails.Call('main.App.GetLogs', count),
+  GetSystemInfo: () => wails.Call('main.App.GetSystemInfo'),
+  CheckPermissions: () => wails.Call('main.App.CheckPermissions'),
+  OpenAccessibilitySettings: () => wails.Call('main.App.OpenAccessibilitySettings'),
+  OpenScreenRecordingSettings: () => wails.Call('main.App.OpenScreenRecordingSettings'),
+  GetOCRPluginStatus: () => wails.Call('main.App.GetOCRPluginStatus'),
+  InstallOCRPlugin: () => wails.Call('main.App.InstallOCRPlugin'),
+  UninstallOCRPlugin: () => wails.Call('main.App.UninstallOCRPlugin'),
+  ShowWindow: () => wails.Call('main.App.ShowWindow'),
+  HideWindow: () => wails.Call('main.App.HideWindow'),
+  QuitApp: () => wails.Call('main.App.QuitApp'),
+}
 
 // ========== DOM 元素 ==========
 const $ = id => document.getElementById(id)
@@ -56,7 +79,7 @@ async function init() {
 
   // 加载配置
   try {
-    const config = await window.go.main.App.LoadConfig()
+    const config = await App.LoadConfig()
     state.config = config
     
     if (config.server_url) els.serverUrl.value = config.server_url
@@ -75,7 +98,7 @@ async function init() {
 
   // 加载系统信息
   try {
-    const info = await window.go.main.App.GetSystemInfo()
+    const info = await App.GetSystemInfo()
     els.systemInfo.textContent = `${info.platform} | ${info.hostname}`
   } catch (e) {
     console.error('获取系统信息失败:', e)
@@ -185,7 +208,7 @@ async function connect() {
   setConnecting(true)
 
   try {
-    const result = await window.go.main.App.Connect(serverUrl, accessKey, secretKey)
+    const result = await App.Connect(serverUrl, accessKey, secretKey)
 
     if (result.success) {
       state.connected = true
@@ -206,7 +229,7 @@ async function disconnect() {
   cancelReconnect()
   
   try {
-    await window.go.main.App.Disconnect()
+    await App.Disconnect()
   } catch (e) {
     console.error('断开连接失败:', e)
   }
@@ -220,7 +243,7 @@ async function disconnect() {
 
 async function checkConnectionStatus() {
   try {
-    const status = await window.go.main.App.GetStatus()
+    const status = await App.GetStatus()
     const wasConnected = state.connected
     
     state.connected = status.connected
@@ -334,7 +357,7 @@ function hideError() {
 // ========== 日志 ==========
 async function refreshLogs() {
   try {
-    const logs = await window.go.main.App.GetLogs(100)
+    const logs = await App.GetLogs(100)
 
     if (!logs || logs.length === 0) {
       els.emptyLogs.classList.remove('hidden')
@@ -385,7 +408,7 @@ async function saveSettings() {
       start_minimized: els.settingStartMinimized.checked
     }
     
-    await window.go.main.App.SaveConfig(config)
+    await App.SaveConfig(config)
     state.config = config
     
     showSettingsSaved()
@@ -410,13 +433,13 @@ function updateTime() {
 // ========== 权限管理 (macOS) ==========
 async function checkPermissions() {
   try {
-    const info = await window.go.main.App.GetSystemInfo()
+    const info = await App.GetSystemInfo()
     if (info.platform !== 'macOS') {
       $('permissionsSection').classList.add('hidden')
       return
     }
     
-    const permissions = await window.go.main.App.CheckPermissions()
+    const permissions = await App.CheckPermissions()
     updatePermissionsUI(permissions)
   } catch (e) {
     console.error('检查权限失败:', e)
@@ -474,7 +497,7 @@ function bindPermissionEvents() {
   if (openAccessibilityBtn) {
     openAccessibilityBtn.addEventListener('click', async () => {
       try {
-        await window.go.main.App.OpenAccessibilitySettings()
+        await App.OpenAccessibilitySettings()
       } catch (e) {
         console.error('打开辅助功能设置失败:', e)
       }
@@ -484,7 +507,7 @@ function bindPermissionEvents() {
   if (openScreenRecordingBtn) {
     openScreenRecordingBtn.addEventListener('click', async () => {
       try {
-        await window.go.main.App.OpenScreenRecordingSettings()
+        await App.OpenScreenRecordingSettings()
       } catch (e) {
         console.error('打开屏幕录制设置失败:', e)
       }
