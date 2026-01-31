@@ -68,7 +68,7 @@ jobs:
         with:
           msystem: MINGW64
           update: false
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-opencv mingw-w64-x86_64-pkg-config
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-opencv mingw-w64-x86_64-pkg-config zip
 
       - name: Build
         shell: msys2 {0}
