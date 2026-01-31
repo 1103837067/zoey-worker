@@ -1686,6 +1686,11 @@ func (e *Executor) parseAutoOptions(payload map[string]interface{}) []auto.Optio
 		opts = append(opts, auto.WithRightClick())
 	}
 
+	// RGB 三通道校验（默认开启，可通过 rgb: false 关闭）
+	if rgb, ok := payload["rgb"].(bool); ok {
+		opts = append(opts, auto.WithRGB(rgb))
+	}
+
 	return opts
 }
 

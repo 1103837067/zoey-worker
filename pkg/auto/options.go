@@ -31,6 +31,8 @@ type Options struct {
 	Region *Region
 	// DisplayID 显示器 ID (-1 表示当前)
 	DisplayID int
+	// RGB 是否使用 RGB 三通道校验（默认开启，提高颜色匹配准确度）
+	RGB bool
 }
 
 // Point 表示二维坐标点
@@ -59,6 +61,7 @@ func DefaultOptions() *Options {
 		Methods:     cv.DefaultMethods,
 		Region:      nil,
 		DisplayID:   -1,
+		RGB:         true, // 默认开启 RGB 三通道校验，提高颜色匹配准确度
 	}
 }
 
@@ -147,5 +150,14 @@ func WithRegion(x, y, width, height int) Option {
 func WithDisplayID(id int) Option {
 	return func(o *Options) {
 		o.DisplayID = id
+	}
+}
+
+// WithRGB 设置是否使用 RGB 三通道校验
+// 开启后会对 R/G/B 三个通道分别计算置信度，取最低值
+// 适用于需要精确颜色匹配的场景
+func WithRGB(rgb bool) Option {
+	return func(o *Options) {
+		o.RGB = rgb
 	}
 }

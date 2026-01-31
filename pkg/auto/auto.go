@@ -211,6 +211,7 @@ func waitForImageResultInternal(templatePath string, o *Options) (*cv.MatchResul
 	tmpl := cv.NewTemplate(templatePath,
 		cv.WithTemplateThreshold(o.Threshold),
 		cv.WithTemplateMethods(o.Methods...),
+		cv.WithTemplateRGB(o.RGB),
 	)
 
 	startTime := time.Now()
@@ -254,8 +255,8 @@ func waitForImageDataInternal(template image.Image, o *Options) (*Point, error) 
 			return nil, err
 		}
 
-		// 使用模板匹配
-		matcher := cv.NewTemplateMatching(templateMat, screen, o.Threshold, false)
+		// 使用模板匹配，传递 RGB 配置
+		matcher := cv.NewTemplateMatching(templateMat, screen, o.Threshold, o.RGB)
 		result, err := matcher.FindBestResult()
 		screen.Close()
 

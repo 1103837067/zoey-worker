@@ -54,7 +54,7 @@ func NewTemplate(filename string, opts ...TemplateOption) *Template {
 		Filename:  filename,
 		Threshold: DefaultThreshold,
 		TargetPos: TargetPosMid,
-		RGB:       false,
+		RGB:       true, // 默认开启 RGB 三通道校验，提高颜色匹配准确度
 		ScaleMax:  800,
 		ScaleStep: 0.005,
 		Methods:   DefaultMethods,
