@@ -22,6 +22,11 @@ const els = {
   logList: $('logList'),
   systemInfo: $('systemInfo'),
   currentTime: $('currentTime'),
+  // Header 连接信息
+  headerConnectionInfo: $('headerConnectionInfo'),
+  headerAgentName: $('headerAgentName'),
+  headerAgentId: $('headerAgentId'),
+  copyAgentIdBtn: $('copyAgentIdBtn'),
   // 设置
   settingAutoConnect: $('settingAutoConnect'),
   settingAutoReconnect: $('settingAutoReconnect'),
@@ -116,6 +121,32 @@ function bindEvents() {
       input.addEventListener('change', saveSettings)
     }
   })
+  
+  // 复制 Agent ID
+  if (els.copyAgentIdBtn) {
+    els.copyAgentIdBtn.addEventListener('click', copyAgentId)
+  }
+}
+
+// ========== 复制 Agent ID ==========
+async function copyAgentId() {
+  if (!state.agentId) return
+  
+  try {
+    await navigator.clipboard.writeText(state.agentId)
+    // 显示复制成功反馈
+    const icon = els.copyAgentIdBtn.querySelector('i')
+    if (icon) {
+      icon.setAttribute('data-lucide', 'check')
+      lucide.createIcons()
+      setTimeout(() => {
+        icon.setAttribute('data-lucide', 'copy')
+        lucide.createIcons()
+      }, 1500)
+    }
+  } catch (e) {
+    console.error('复制失败:', e)
+  }
 }
 
 // ========== Tab 切换 ==========
@@ -266,13 +297,23 @@ function updateUI() {
     els.secretKey.disabled = false
   }
 
-  // 连接信息
+  // 连接信息（表单内）
   if (state.connected) {
     els.connectionInfo.classList.remove('hidden')
     els.agentIdDisplay.textContent = state.agentId
     els.agentNameDisplay.textContent = state.agentName
   } else {
     els.connectionInfo.classList.add('hidden')
+  }
+  
+  // Header 连接信息
+  if (state.connected && els.headerConnectionInfo) {
+    els.headerConnectionInfo.classList.remove('hidden')
+    els.headerAgentName.textContent = state.agentName || '-'
+    els.headerAgentId.textContent = state.agentId || '-'
+    lucide.createIcons()
+  } else if (els.headerConnectionInfo) {
+    els.headerConnectionInfo.classList.add('hidden')
   }
 }
 

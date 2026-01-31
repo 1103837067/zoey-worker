@@ -32,9 +32,11 @@ var (
 )
 
 const (
-	// 使用 int32 转换避免溢出
-	gwlStyle   int32 = -16
-	gwlExStyle int32 = -20
+	// GWL_STYLE 和 GWL_EXSTYLE 是负数，需要特殊处理
+	// 在 64 位系统上，-16 的 uintptr 表示为 0xFFFFFFFFFFFFFFF0
+	// 在 32 位系统上，-16 的 uintptr 表示为 0xFFFFFFF0
+	GWL_STYLE   = ^uintptr(15)  // -16
+	GWL_EXSTYLE = ^uintptr(19)  // -20
 
 	WS_VISIBLE       uintptr = 0x10000000
 	WS_EX_TOOLWINDOW uintptr = 0x00000080
@@ -94,9 +96,8 @@ func enumWindowsCallback(hwnd syscall.Handle, lParam uintptr) {
 	}
 
 	// 获取窗口样式，过滤工具窗口等
-	// 使用 uintptr 转换 int32 常量
-	style, _, _ := procGetWindowLongW.Call(uintptr(hwnd), uintptr(gwlStyle))
-	exStyle, _, _ := procGetWindowLongW.Call(uintptr(hwnd), uintptr(gwlExStyle))
+	style, _, _ := procGetWindowLongW.Call(uintptr(hwnd), GWL_STYLE)
+	exStyle, _, _ := procGetWindowLongW.Call(uintptr(hwnd), GWL_EXSTYLE)
 
 	// 跳过不可见窗口
 	if style&WS_VISIBLE == 0 {
