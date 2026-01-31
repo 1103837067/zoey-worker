@@ -201,10 +201,15 @@ jobs:
         run: |
           echo "=== Downloading pre-built OpenCV ${OPENCV_VERSION} ==="
           mkdir -p /c/opencv-minimal
-          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
+          curl -L "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
+          ls -la opencv.zip
           unzip -q opencv.zip -d /c/opencv-minimal
-          echo "=== OpenCV downloaded ==="
+          echo "=== OpenCV directory structure ==="
           ls -la /c/opencv-minimal/
+          ls -la /c/opencv-minimal/include/ || echo "No include dir"
+          ls -la /c/opencv-minimal/include/opencv4/ || echo "No opencv4 dir"
+          ls -la /c/opencv-minimal/lib/ || echo "No lib dir"
+          ls -la /c/opencv-minimal/bin/ || echo "No bin dir"
 
       - name: Download ONNX Runtime & OCR Models
         shell: msys2 {0}
