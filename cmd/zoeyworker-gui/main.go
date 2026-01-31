@@ -66,11 +66,6 @@ func main() {
 		},
 	})
 
-	// 设置窗口图标（Windows 标题栏和任务栏图标）
-	if runtime.GOOS == "windows" {
-		mainWindow.SetIcon(appIcon)
-	}
-
 	// 监听窗口关闭事件，最小化到托盘而不是退出
 	mainWindow.OnWindowEvent(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		// 阻止默认关闭行为
