@@ -60,6 +60,41 @@ func ClickImage(templatePath string, opts ...Option) error {
 	return clickAt(pos.X+o.ClickOffset.X, pos.Y+o.ClickOffset.Y, o)
 }
 
+// ClickImageWithGrid 点击图像匹配区域内的网格位置
+// gridStr: 网格位置字符串 (如 "2.2.1.1" 表示 2x2 网格的第1行第1列)
+func ClickImageWithGrid(templatePath string, gridStr string, opts ...Option) error {
+	o := applyOptions(opts...)
+
+	// 等待图像出现并获取完整匹配结果
+	result, err := waitForImageResultInternal(templatePath, o)
+	if err != nil {
+		return err
+	}
+
+	// 计算匹配区域
+	rect := result.Rectangle
+	matchRegion := Region{
+		X:      rect.TopLeft.X,
+		Y:      rect.TopLeft.Y,
+		Width:  rect.TopRight.X - rect.TopLeft.X,
+		Height: rect.BottomLeft.Y - rect.TopLeft.Y,
+	}
+
+	// 如果有区域限制，加上区域偏移
+	if o.Region != nil {
+		matchRegion.X += o.Region.X
+		matchRegion.Y += o.Region.Y
+	}
+
+	// 计算网格位置的点击坐标
+	clickPos, err := CalculateGridCenterFromString(matchRegion, gridStr)
+	if err != nil {
+		return fmt.Errorf("计算网格位置失败: %w", err)
+	}
+
+	return clickAt(clickPos.X+o.ClickOffset.X, clickPos.Y+o.ClickOffset.Y, o)
+}
+
 // ClickImageData 点击图像位置（使用图像数据）
 func ClickImageData(template image.Image, opts ...Option) error {
 	o := applyOptions(opts...)
@@ -102,6 +137,21 @@ func ImageExistsData(template image.Image, opts ...Option) bool {
 
 // waitForImageInternal 内部等待图像函数
 func waitForImageInternal(templatePath string, o *Options) (*Point, error) {
+	result, err := waitForImageResultInternal(templatePath, o)
+	if err != nil {
+		return nil, err
+	}
+	
+	pos := result.Result
+	// 如果有区域限制，加上区域偏移
+	if o.Region != nil {
+		return &Point{X: pos.X + o.Region.X, Y: pos.Y + o.Region.Y}, nil
+	}
+	return &Point{X: pos.X, Y: pos.Y}, nil
+}
+
+// waitForImageResultInternal 内部等待图像函数（返回完整匹配结果）
+func waitForImageResultInternal(templatePath string, o *Options) (*cv.MatchResult, error) {
 	tmpl := cv.NewTemplate(templatePath,
 		cv.WithTemplateThreshold(o.Threshold),
 		cv.WithTemplateMethods(o.Methods...),
@@ -114,18 +164,14 @@ func waitForImageInternal(templatePath string, o *Options) (*Point, error) {
 			return nil, err
 		}
 
-		pos, err := tmpl.MatchIn(screen)
+		result, err := tmpl.MatchResultIn(screen)
 		screen.Close()
 
 		if err != nil {
 			return nil, fmt.Errorf("匹配失败: %w", err)
 		}
-		if pos != nil {
-			// 如果有区域限制，加上区域偏移
-			if o.Region != nil {
-				return &Point{X: pos.X + o.Region.X, Y: pos.Y + o.Region.Y}, nil
-			}
-			return &Point{X: pos.X, Y: pos.Y}, nil
+		if result != nil {
+			return result, nil
 		}
 
 		if o.Timeout == 0 || time.Since(startTime) > o.Timeout {

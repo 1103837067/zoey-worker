@@ -124,6 +124,11 @@ func (t *Template) MatchIn(screen gocv.Mat) (*Point, error) {
 	return &pos, nil
 }
 
+// MatchResultIn 在屏幕图像中匹配模板，返回完整匹配结果
+func (t *Template) MatchResultIn(screen gocv.Mat) (*MatchResult, error) {
+	return t.cvMatch(screen)
+}
+
 // MatchAllIn 在屏幕图像中查找所有匹配
 func (t *Template) MatchAllIn(screen gocv.Mat) ([]*MatchResult, error) {
 	image, err := t.readImage()

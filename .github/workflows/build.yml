@@ -7,6 +7,7 @@ on:
 
 env:
   GO_VERSION: '1.23'
+  ONNX_VERSION: '1.19.2'
 
 jobs:
   build-macos:
@@ -18,24 +19,144 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Install Dependencies & Build
+      - name: Install Dependencies
         run: |
-          brew install opencv || true
+          brew install opencv dylibbundler || true
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Download ONNX Runtime for macOS
+        run: |
+          # 下载 ONNX Runtime
+          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-osx-arm64-${ONNX_VERSION}.tgz" | tar xz
+          mv onnxruntime-osx-arm64-${ONNX_VERSION} onnxruntime
+          
+          # 下载 OCR 模型
+          mkdir -p models
+          git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
+          if [ -d "models/go-ocr-models" ]; then
+            mv models/go-ocr-models/* models/
+            rm -rf models/go-ocr-models
+          fi
+          
+          echo "Dependencies downloaded:"
+          ls -la onnxruntime/lib/
+          ls -la models/
+
+      - name: Build CLI
+        run: |
           export PKG_CONFIG_PATH="$(brew --prefix opencv)/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$(brew --prefix opencv)/include/opencv4"
           export CGO_LDFLAGS="-L$(brew --prefix opencv)/lib"
           
-          go install github.com/wailsapp/wails/v2/cmd/wails@latest
-          
           mkdir -p dist
-          go build -ldflags "-s -w" -o dist/zoeyworker-darwin-arm64 ./cmd/zoeyworker
+          go build -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
+
+      - name: Build GUI App
+        run: |
+          export PKG_CONFIG_PATH="$(brew --prefix opencv)/lib/pkgconfig"
+          export CGO_CPPFLAGS="-I$(brew --prefix opencv)/include/opencv4"
+          export CGO_LDFLAGS="-L$(brew --prefix opencv)/lib"
           
           cd cmd/zoeyworker-gui
           wails build -ldflags "-s -w" -clean
-          cd ../..
-          mv cmd/zoeyworker-gui/build/bin/ZoeyWorker.app dist/
+
+      - name: Package Self-Contained App
+        run: |
+          APP_BUNDLE="cmd/zoeyworker-gui/build/bin/ZoeyWorker.app"
+          FRAMEWORKS_DIR="${APP_BUNDLE}/Contents/Frameworks"
+          RESOURCES_DIR="${APP_BUNDLE}/Contents/Resources"
+          EXECUTABLE="${APP_BUNDLE}/Contents/MacOS/ZoeyWorker"
           
-          cd dist && zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app && rm -rf ZoeyWorker.app
+          mkdir -p "${FRAMEWORKS_DIR}"
+          mkdir -p "${RESOURCES_DIR}/models"
+          
+          # 复制 ONNX Runtime dylib
+          echo "=== Copying ONNX Runtime ==="
+          cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/" 2>/dev/null || true
+          
+          # 使用 dylibbundler 自动处理依赖（推荐方案）
+          echo "=== Using dylibbundler to bundle dependencies ==="
+          dylibbundler -od -b -x "$EXECUTABLE" -d "${FRAMEWORKS_DIR}/" -p @executable_path/../Frameworks/ 2>&1 || {
+            echo "dylibbundler failed, falling back to manual method..."
+            
+            # 手动方案：复制所有 OpenCV dylibs
+            OPENCV_PREFIX="$(brew --prefix opencv)"
+            for dylib in ${OPENCV_PREFIX}/lib/libopencv*.dylib; do
+              [ -f "$dylib" ] && cp -L "$dylib" "${FRAMEWORKS_DIR}/" 2>/dev/null || true
+            done
+            
+            # 多轮递归复制依赖
+            for round in 1 2 3 4 5; do
+              echo "Round $round: checking dependencies..."
+              changed=0
+              for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+                for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
+                  depname=$(basename "$dep")
+                  if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
+                    if [[ "$dep" == @rpath* ]]; then
+                      found_lib=$(find /opt/homebrew -name "${depname}" 2>/dev/null | head -1)
+                    else
+                      found_lib="$dep"
+                    fi
+                    if [ -n "$found_lib" ] && [ -f "$found_lib" ]; then
+                      echo "  Copying: $depname"
+                      cp -L "$found_lib" "${FRAMEWORKS_DIR}/"
+                      changed=1
+                    fi
+                  fi
+                done
+              done
+              [ $changed -eq 0 ] && break
+            done
+            
+            # 修复可执行文件引用
+            for dep in $(otool -L "$EXECUTABLE" | grep -E "/opt/homebrew|/usr/local" | awk '{print $1}'); do
+              libname=$(basename "$dep")
+              [ -f "${FRAMEWORKS_DIR}/${libname}" ] && \
+                install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
+            done
+            
+            # 修复所有 dylib 路径
+            for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+              libname=$(basename "$dylib")
+              install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
+              for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local" | awk '{print $1}'); do
+                depname=$(basename "$dep")
+                [ -f "${FRAMEWORKS_DIR}/${depname}" ] && \
+                  install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
+              done
+            done
+          }
+          
+          # 复制 OCR 模型
+          echo "=== Copying OCR models ==="
+          cp -r models/* "${RESOURCES_DIR}/models/" 2>/dev/null || true
+          
+          # 签名（ad-hoc）
+          echo "=== Signing app bundle ==="
+          codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
+          
+          # 打包
+          mkdir -p dist
+          mv "$APP_BUNDLE" dist/
+          mv dist/zoeyworker dist/ZoeyWorker.app/Contents/MacOS/zoeyworker-cli
+          
+          cd dist
+          echo "=== Final package info ==="
+          echo "App bundle size:"
+          du -sh ZoeyWorker.app
+          echo "Frameworks count:"
+          ls -1 ZoeyWorker.app/Contents/Frameworks/ | wc -l
+          
+          # 验证：检查是否还有外部依赖
+          echo "=== Verifying no external dependencies ==="
+          otool -L ZoeyWorker.app/Contents/MacOS/ZoeyWorker | grep -E "/opt/homebrew|/usr/local" && echo "WARNING: External dependencies found!" || echo "OK: No external dependencies"
+          
+          zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app
+          rm -rf ZoeyWorker.app
+          
+          echo "Package created:"
+          ls -lh
 
       - uses: actions/upload-artifact@v4
         with:
@@ -68,7 +189,35 @@ jobs:
         with:
           msystem: MINGW64
           update: false
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-opencv mingw-w64-x86_64-pkg-config zip
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-opencv
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-ffmpeg
+            zip
+            unzip
+            wget
+            git
+
+      - name: Download ONNX Runtime & OCR Models
+        shell: msys2 {0}
+        run: |
+          # 下载 ONNX Runtime
+          wget -q "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-win-x64-${ONNX_VERSION}.zip" -O onnxruntime.zip
+          unzip -q onnxruntime.zip
+          mv onnxruntime-win-x64-${ONNX_VERSION} onnxruntime
+          
+          # 下载 OCR 模型
+          mkdir -p models
+          git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
+          if [ -d "models/go-ocr-models" ]; then
+            mv models/go-ocr-models/* models/
+            rm -rf models/go-ocr-models
+          fi
+          
+          echo "Dependencies downloaded:"
+          ls -la onnxruntime/lib/
+          ls -la models/
 
       - name: Build
         shell: msys2 {0}
@@ -88,13 +237,16 @@ jobs:
           export OPENCV_GO_SKIP_LINKING=1
           
           mkdir -p dist
+          
+          # 构建 CLI
           go build -tags customenv -ldflags "-s -w -H windowsgui" -o dist/zoeyworker-cli.exe ./cmd/zoeyworker
           
+          # 构建 GUI
           cd cmd/zoeyworker-gui
           wails build -tags customenv -skipbindings -ldflags "-s -w"
           cp build/bin/ZoeyWorker.exe ../../dist/
 
-      - name: Package with DLLs
+      - name: Package Self-Contained Distribution
         shell: msys2 {0}
         run: |
           set -e
@@ -102,37 +254,180 @@ jobs:
           # 检查 exe 是否存在
           if ! ls dist/*.exe 1>/dev/null 2>&1; then
             echo "ERROR: No .exe files found in dist/"
-            ls -la dist/ || echo "dist/ directory does not exist"
             exit 1
           fi
           
-          echo "Found exe files:"
-          ls -la dist/*.exe
+          echo "=== Collecting all dependencies ==="
           
-          # 自动复制所有依赖 DLL
+          # 递归复制 DLL 依赖（参考 macOS 打包经验）
           copy_deps() {
             local file="$1"
-            if [ ! -f "$file" ]; then
-              return
-            fi
-            for dll in $(ldd "$file" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
+            [ ! -f "$file" ] && return
+            for dll in $(ldd "$file" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
               if [ -n "$dll" ] && [ -f "$dll" ] && [ ! -f "dist/$(basename "$dll")" ]; then
-                echo "Copying: $dll"
+                echo "Copying: $(basename $dll)"
                 cp "$dll" dist/ && copy_deps "$dll"
               fi
             done
           }
           
+          # 复制 exe 的直接依赖
           for exe in dist/*.exe; do
             echo "Processing: $exe"
             copy_deps "$exe"
           done
           
-          echo "Creating zip package..."
-          cd dist && zip -r ../ZoeyWorker-windows.zip * && cd ..
-          rm -rf dist && mkdir dist && mv ZoeyWorker-windows.zip dist/
+          # === 复制 ldd 无法检测到的运行时依赖 ===
           
-          echo "Package created successfully:"
+          echo "=== Copying ONNX Runtime (purego dynamic loading) ==="
+          cp onnxruntime/lib/*.dll dist/ 2>/dev/null || true
+          
+          echo "=== Copying OpenCV all modules ==="
+          # 复制所有 OpenCV DLL（确保完整）
+          for dll in /mingw64/bin/libopencv*.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          done
+          
+          echo "=== Copying OpenCV FFmpeg plugin ==="
+          for pattern in "opencv_videoio_ffmpeg*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          echo "=== Copying FFmpeg libraries ==="
+          for lib in avcodec avformat avutil swscale swresample avfilter avdevice; do
+            for dll in /mingw64/bin/lib${lib}*.dll; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          echo "=== Copying VTK libraries (OpenCV viz dependency) ==="
+          for dll in /mingw64/bin/libvtk*.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          done
+          
+          echo "=== Copying protobuf/abseil (OpenCV DNN dependency) ==="
+          for dll in /mingw64/bin/libprotobuf*.dll /mingw64/bin/libabsl*.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          done
+          
+          echo "=== Copying additional runtime libraries ==="
+          # MinGW 运行时
+          for dll in /mingw64/bin/libgcc_s_seh-1.dll \
+                     /mingw64/bin/libstdc++-6.dll \
+                     /mingw64/bin/libwinpthread-1.dll \
+                     /mingw64/bin/libgomp-1.dll \
+                     /mingw64/bin/libgfortran-5.dll \
+                     /mingw64/bin/libquadmath-0.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          done
+          
+          # 图像编解码库
+          for pattern in "libjpeg*.dll" "libpng*.dll" "libtiff*.dll" "libwebp*.dll" \
+                         "zlib*.dll" "liblzma*.dll" "libzstd*.dll" "libbz2*.dll" \
+                         "libdeflate*.dll" "libjbig*.dll" "libLerc*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          # OpenEXR/Imath (图像处理)
+          for pattern in "libOpenEXR*.dll" "libImath*.dll" "libIex*.dll" "libIlmThread*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          # TBB (并行计算)
+          for dll in /mingw64/bin/libtbb*.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          done
+          
+          # OpenBLAS (数学计算)
+          for dll in /mingw64/bin/libopenblas*.dll; do
+            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          done
+          
+          # Tesseract/Leptonica (OCR)
+          for pattern in "libtesseract*.dll" "libleptonica*.dll" "liblept*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          # HarfBuzz/FreeType (字体渲染)
+          for pattern in "libharfbuzz*.dll" "libfreetype*.dll" "libglib*.dll" "libintl*.dll" "libiconv*.dll" "libpcre*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          # 视频编解码器
+          for pattern in "libx264*.dll" "libx265*.dll" "libvpx*.dll" "libdav1d*.dll" \
+                         "libmp3lame*.dll" "libopus*.dll" "libvorbis*.dll" "libogg*.dll" \
+                         "libSvtAv1*.dll" "libaom*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          # 其他可能需要的库
+          for pattern in "libarchive*.dll" "libceres*.dll" "libgflags*.dll" "libglog*.dll" \
+                         "libjsoncpp*.dll" "libpugixml*.dll" "libdouble-conversion*.dll" \
+                         "libcholmod*.dll" "libspqr*.dll" "libamd*.dll" "libcamd*.dll" \
+                         "libccolamd*.dll" "libcolamd*.dll" "libsuitesparseconfig*.dll" \
+                         "libmetis*.dll" "libopenvino*.dll"; do
+            for dll in /mingw64/bin/$pattern; do
+              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+            done
+          done
+          
+          echo "=== Multi-round dependency check (like macOS) ==="
+          # 多轮检查，确保所有间接依赖都被复制（macOS 需要 3-4 轮）
+          for round in 1 2 3 4 5; do
+            echo "Round $round: checking dependencies..."
+            changed=0
+            for dll in dist/*.dll; do
+              for dep in $(ldd "$dll" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
+                depname=$(basename "$dep")
+                if [ -n "$dep" ] && [ -f "$dep" ] && [ ! -f "dist/$depname" ]; then
+                  echo "  Found missing: $depname"
+                  cp "$dep" dist/
+                  changed=1
+                fi
+              done
+            done
+            [ $changed -eq 0 ] && echo "  No new dependencies found, stopping." && break
+          done
+          
+          echo "=== Copying OCR models ==="
+          mkdir -p dist/models
+          cp -r models/* dist/models/ 2>/dev/null || true
+          
+          echo "=== Final package contents ==="
+          echo "EXE files:"
+          ls -la dist/*.exe
+          echo ""
+          echo "DLL count: $(ls -1 dist/*.dll 2>/dev/null | wc -l)"
+          echo ""
+          echo "Models:"
+          ls -la dist/models/ 2>/dev/null || echo "No models"
+          echo ""
+          echo "Total size:"
+          du -sh dist/
+          
+          echo "=== Creating ZIP package ==="
+          cd dist
+          zip -r ../ZoeyWorker-windows-x64.zip *
+          cd ..
+          
+          # 清理并保留 zip
+          rm -rf dist
+          mkdir dist
+          mv ZoeyWorker-windows-x64.zip dist/
+          
+          echo "=== Package created successfully ==="
           ls -la dist/
 
       - uses: actions/upload-artifact@v4

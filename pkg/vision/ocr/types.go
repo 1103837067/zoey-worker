@@ -1,13 +1,49 @@
 // Package ocr 提供 OCR 文字识别功能
 package ocr
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+)
 
 func init() {
 	// 初始化 statFile 函数
 	statFile = func(path string) (interface{}, error) {
 		return os.Stat(path)
 	}
+}
+
+// getExecutableDir 获取可执行文件所在目录
+func getExecutableDir() string {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	// 解析符号链接
+	execPath, err = filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(execPath)
+}
+
+// getResourcesDir 获取资源目录（跨平台）
+func getResourcesDir() string {
+	execDir := getExecutableDir()
+
+	if runtime.GOOS == "darwin" {
+		// macOS: 检查是否在 .app bundle 中
+		// 结构: ZoeyWorker.app/Contents/MacOS/ZoeyWorker
+		//       ZoeyWorker.app/Contents/Resources/models
+		resourcesDir := filepath.Join(execDir, "..", "Resources")
+		if fileExists(resourcesDir) {
+			return resourcesDir
+		}
+	}
+
+	// Windows/Linux 或非 bundle 模式: 资源与可执行文件同目录
+	return execDir
 }
 
 // Point 表示二维坐标点
@@ -61,15 +97,44 @@ func DefaultConfig() Config {
 
 // getDefaultOnnxRuntimePath 获取默认的 ONNX Runtime 库路径
 func getDefaultOnnxRuntimePath() string {
+	execDir := getExecutableDir()
+	resourcesDir := getResourcesDir()
+
 	// 根据操作系统和架构选择正确的库文件
-	// 优先查找项目内的 models/lib 目录
-	paths := []string{
-		"models/lib/onnxruntime_arm64.dylib", // macOS ARM64
-		"models/lib/onnxruntime_amd64.dylib", // macOS AMD64
-		"models/lib/onnxruntime_arm64.so",    // Linux ARM64
-		"models/lib/onnxruntime_amd64.so",    // Linux AMD64
-		"models/lib/onnxruntime.dll",         // Windows
-		"./lib/onnxruntime.so",               // 默认位置
+	var paths []string
+
+	switch runtime.GOOS {
+	case "darwin":
+		// macOS: 先查找 Frameworks 目录（.app bundle），再查找相对路径
+		frameworksDir := filepath.Join(execDir, "..", "Frameworks")
+		paths = []string{
+			filepath.Join(frameworksDir, "libonnxruntime.dylib"),
+			filepath.Join(frameworksDir, "onnxruntime.dylib"),
+			filepath.Join(execDir, "libonnxruntime.dylib"),
+			filepath.Join(resourcesDir, "lib", "onnxruntime_arm64.dylib"),
+			filepath.Join(resourcesDir, "lib", "onnxruntime_amd64.dylib"),
+			"models/lib/onnxruntime_arm64.dylib",
+			"models/lib/onnxruntime_amd64.dylib",
+		}
+	case "windows":
+		// Windows: 与 exe 同目录
+		paths = []string{
+			filepath.Join(execDir, "onnxruntime.dll"),
+			filepath.Join(execDir, "onnxruntime_providers_shared.dll"),
+			filepath.Join(resourcesDir, "onnxruntime.dll"),
+			"models/lib/onnxruntime.dll",
+			"onnxruntime.dll",
+		}
+	default:
+		// Linux
+		paths = []string{
+			filepath.Join(execDir, "libonnxruntime.so"),
+			filepath.Join(resourcesDir, "lib", "onnxruntime_arm64.so"),
+			filepath.Join(resourcesDir, "lib", "onnxruntime_amd64.so"),
+			"models/lib/onnxruntime_arm64.so",
+			"models/lib/onnxruntime_amd64.so",
+			"./lib/onnxruntime.so",
+		}
 	}
 
 	for _, p := range paths {
@@ -83,9 +148,16 @@ func getDefaultOnnxRuntimePath() string {
 
 // getDefaultModelPath 获取默认的模型路径
 func getDefaultModelPath(filename string) string {
+	execDir := getExecutableDir()
+	resourcesDir := getResourcesDir()
+
 	paths := []string{
-		"models/paddle_weights/" + filename,
-		"./models/paddle_weights/" + filename,
+		// 打包后的路径
+		filepath.Join(resourcesDir, "models", "paddle_weights", filename),
+		filepath.Join(execDir, "models", "paddle_weights", filename),
+		// 开发时的相对路径
+		filepath.Join("models", "paddle_weights", filename),
+		filepath.Join(".", "models", "paddle_weights", filename),
 	}
 
 	for _, p := range paths {

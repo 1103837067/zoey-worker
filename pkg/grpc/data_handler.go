@@ -3,6 +3,7 @@ package grpc
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/uia"
@@ -160,22 +161,49 @@ func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
 	log("DEBUG", fmt.Sprintf("handleGetWindows payload: %+v", payload))
 
 	// 解析筛选参数
-	var filter string
+	var processNameFilter string
 	if processName, ok := payload["process_name"].(string); ok && processName != "" {
-		filter = processName
-		log("DEBUG", fmt.Sprintf("Filter by process_name: %s", filter))
+		processNameFilter = processName
+		log("DEBUG", fmt.Sprintf("Filter by process_name: %s", processNameFilter))
 	}
 
-	var windows []auto.WindowInfo
-	var err error
-
-	if filter != "" {
-		windows, err = auto.GetWindows(filter)
-	} else {
-		windows, err = auto.GetWindows()
-	}
+	// 先获取所有窗口（不带过滤）
+	windows, err := auto.GetWindows()
 
 	log("DEBUG", fmt.Sprintf("GetWindows returned %d windows, err=%v", len(windows), err))
+
+	// 如果有进程名过滤，需要额外处理
+	// 因为 process_name 可能是进程名（如 WeChat），但窗口的 ownerName 可能是显示名（如 微信）
+	// 所以需要先查找进程的 PID，然后通过 PID 匹配窗口
+	if processNameFilter != "" && err == nil {
+		// 先通过进程名查找匹配的 PID
+		matchingPIDs := make(map[int]bool)
+		processes, procErr := auto.FindProcess(processNameFilter)
+		if procErr == nil {
+			for _, proc := range processes {
+				matchingPIDs[proc.PID] = true
+				log("DEBUG", fmt.Sprintf("Found process: PID=%d, Name=%s", proc.PID, proc.Name))
+			}
+		}
+
+		// 过滤窗口：通过 PID 匹配或通过窗口标题/应用名称匹配
+		filterStr := strings.ToLower(processNameFilter)
+		filteredWindows := make([]auto.WindowInfo, 0)
+		for _, win := range windows {
+			// 方式1：通过 PID 匹配（进程名匹配）
+			if matchingPIDs[win.PID] {
+				filteredWindows = append(filteredWindows, win)
+				log("DEBUG", fmt.Sprintf("Window matched by PID: PID=%d, Title=%q", win.PID, win.Title))
+				continue
+			}
+			// 方式2：通过窗口标题匹配
+			if strings.Contains(strings.ToLower(win.Title), filterStr) {
+				filteredWindows = append(filteredWindows, win)
+				log("DEBUG", fmt.Sprintf("Window matched by title: PID=%d, Title=%q", win.PID, win.Title))
+			}
+		}
+		windows = filteredWindows
+	}
 	
 	// 打印每个窗口的标题用于调试
 	for i, win := range windows {

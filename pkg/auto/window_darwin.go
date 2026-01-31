@@ -59,9 +59,10 @@ int activateAppByName(const char* name) {
 // 这里返回的是实际的窗口，每个浏览器窗口（可能包含多个标签）是一个条目
 int getWindowList(WindowInfoC* windows, int maxCount) {
     // 使用 CGWindowListCopyWindowInfo 获取窗口列表
-    // 这个 API 不会触发辅助功能权限弹窗
+    // 使用 kCGWindowListOptionAll 获取所有窗口（包括最小化的）
+    // kCGWindowListExcludeDesktopElements 排除桌面元素
     CFArrayRef windowList = CGWindowListCopyWindowInfo(
-        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements,
         kCGNullWindowID
     );
 

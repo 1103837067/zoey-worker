@@ -38,6 +38,8 @@ const (
 	TaskTypeAssertText    = "assert_text"
 	TaskTypeGetClipboard  = "get_clipboard"
 	TaskTypeSetClipboard  = "set_clipboard"
+	// 批量执行类型
+	TaskTypeDebugCase     = "debug_case"
 )
 
 // 使用 pb 包中的枚举类型
@@ -232,9 +234,6 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		return
 	}
 
-	// 在执行操作之前，先激活目标窗口（如果指定了）
-	e.activateTargetWindowIfNeeded(payload, taskType)
-
 	// 根据任务类型执行
 	var result interface{}
 	var err error
@@ -280,6 +279,10 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		result, err = e.executeGetClipboard(payload)
 	case TaskTypeSetClipboard:
 		result, err = e.executeSetClipboard(payload)
+	case TaskTypeDebugCase:
+		// debug_case 是特殊的批量执行任务，需要单独处理
+		e.executeDebugCase(taskID, payload, startTime)
+		return // 直接返回，不走下面的结果发送逻辑
 	default:
 		err = fmt.Errorf("未知的任务类型: %s", taskType)
 	}
@@ -328,7 +331,21 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 		return nil, fmt.Errorf("缺少 image 参数")
 	}
 
+	// 检查是否有网格参数
+	gridStr, _ := payload["grid"].(string)
+	
 	opts := e.parseAutoOptions(payload)
+	
+	if gridStr != "" {
+		// 使用网格点击
+		err := auto.ClickImageWithGrid(imagePath, gridStr, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"clicked": true, "grid": gridStr}, nil
+	}
+	
+	// 普通点击
 	err := auto.ClickImage(imagePath, opts...)
 	if err != nil {
 		return nil, err
@@ -371,6 +388,34 @@ func (e *Executor) executeTypeText(payload map[string]interface{}) (interface{},
 
 // executeKeyPress 执行按键
 func (e *Executor) executeKeyPress(payload map[string]interface{}) (interface{}, error) {
+	// 新格式：keys 数组 (如 ["Ctrl", "C"] 或 ["Enter"])
+	if keysRaw, ok := payload["keys"].([]interface{}); ok && len(keysRaw) > 0 {
+		var keys []string
+		for _, k := range keysRaw {
+			if s, ok := k.(string); ok {
+				keys = append(keys, s)
+			}
+		}
+		
+		if len(keys) == 0 {
+			return nil, fmt.Errorf("keys 数组为空")
+		}
+		
+		// 最后一个是主键，前面的是修饰键
+		if len(keys) == 1 {
+			// 单个按键
+			auto.KeyTap(keys[0])
+		} else {
+			// 组合键：前面的是修饰键，最后一个是主键
+			mainKey := keys[len(keys)-1]
+			modifiers := keys[:len(keys)-1]
+			auto.KeyTap(mainKey, modifiers...)
+		}
+		
+		return map[string]interface{}{"pressed": true, "keys": keys}, nil
+	}
+	
+	// 旧格式兼容：key + modifiers
 	key, ok := payload["key"].(string)
 	if !ok || key == "" {
 		return nil, fmt.Errorf("缺少 key 参数")
@@ -502,55 +547,6 @@ func (e *Executor) executeMouseClick(payload map[string]interface{}) (interface{
 	}
 
 	return map[string]bool{"clicked": true}, nil
-}
-
-// activateTargetWindowIfNeeded 在执行操作前激活目标窗口
-// 这是一个自动行为，不需要用户显式调用 activate_app
-func (e *Executor) activateTargetWindowIfNeeded(payload map[string]interface{}, taskType string) {
-	// 这些任务类型不需要激活窗口
-	skipTypes := map[string]bool{
-		TaskTypeActivateApp:  true, // activate_app 自己处理激活
-		TaskTypeCloseApp:     true, // 关闭应用不需要先激活
-		TaskTypeWaitTime:     true, // 等待时间不需要激活
-		TaskTypeGetClipboard: true, // 剪贴板操作不需要激活
-		TaskTypeSetClipboard: true,
-	}
-	if skipTypes[taskType] {
-		return
-	}
-
-	appName, _ := payload["app_name"].(string)
-	windowTitle, _ := payload["window_title"].(string)
-
-	// 如果没有指定应用名或窗口标题，不激活
-	if appName == "" && windowTitle == "" {
-		return
-	}
-
-	log("DEBUG", fmt.Sprintf("Auto-activating window before %s: app='%s', title='%s'", taskType, appName, windowTitle))
-
-	// 如果同时有应用名和窗口标题，使用精确匹配
-	if appName != "" && windowTitle != "" {
-		if err := auto.ActivateWindowByTitle(appName, windowTitle); err != nil {
-			log("WARN", fmt.Sprintf("Failed to activate window by title: %v", err))
-		}
-		return
-	}
-
-	// 只有应用名
-	if appName != "" {
-		if err := auto.ActivateWindow(appName); err != nil {
-			log("WARN", fmt.Sprintf("Failed to activate window: %v", err))
-		}
-		return
-	}
-
-	// 只有窗口标题
-	if windowTitle != "" {
-		if err := auto.ActivateWindow(windowTitle); err != nil {
-			log("WARN", fmt.Sprintf("Failed to activate window by title: %v", err))
-		}
-	}
 }
 
 // executeActivateApp 执行激活应用
@@ -782,6 +778,202 @@ func (e *Executor) executeAssertText(payload map[string]interface{}) (interface{
 	}
 
 	return map[string]bool{"asserted": true, "exists": true}, nil
+}
+
+// executeDebugCase 执行调试用例（顺序执行多个步骤）
+func (e *Executor) executeDebugCase(taskID string, payload map[string]interface{}, startTime time.Time) {
+	// 解析步骤列表
+	stepsRaw, ok := payload["steps"].([]interface{})
+	if !ok || len(stepsRaw) == 0 {
+		taskErr := newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, pb.FailureReason_FAILURE_REASON_PARAM_ERROR, "缺少 steps 参数或步骤列表为空")
+		e.sendTaskResultWithError(taskID, taskErr, nil, startTime)
+		return
+	}
+
+	stopOnFail, _ := payload["stop_on_fail"].(bool)
+	totalSteps := len(stepsRaw)
+
+	log("INFO", fmt.Sprintf("[Task:%s] debug_case 开始，共 %d 个步骤", taskID, totalSteps))
+
+	var completedSteps, passedSteps, failedSteps int32
+
+	for i, stepRaw := range stepsRaw {
+		stepMap, ok := stepRaw.(map[string]interface{})
+		if !ok {
+			log("WARN", fmt.Sprintf("[Task:%s] 步骤 %d 格式错误", taskID, i+1))
+			continue
+		}
+
+		stepID, _ := stepMap["step_id"].(string)
+		stepTaskType, _ := stepMap["task_type"].(string)
+		stepParams, _ := stepMap["params"].(map[string]interface{})
+
+		// 构建步骤级别的 taskID（用于前端区分每个步骤的结果）
+		stepTaskID := fmt.Sprintf("step_%s_%d", stepID, time.Now().UnixMilli())
+
+		log("INFO", fmt.Sprintf("[Task:%s] 执行步骤 %d/%d: %s (type=%s)", taskID, i+1, totalSteps, stepID, stepTaskType))
+
+		// 发送步骤进度
+		e.sendTaskProgress(taskID, int32(totalSteps), completedSteps, passedSteps, failedSteps, stepTaskType, "RUNNING")
+
+		// 执行单个步骤
+		stepStartTime := time.Now()
+		stepResult, stepErr := e.executeSingleStep(stepTaskType, stepParams)
+
+		completedSteps++
+
+		if stepErr != nil {
+			failedSteps++
+			taskErr := classifyError(stepErr)
+			log("ERROR", fmt.Sprintf("[Task:%s] 步骤 %s 执行失败: %s", taskID, stepID, taskErr.Message))
+
+			// 发送步骤失败结果
+			e.sendStepResult(stepTaskID, stepID, false, taskErr.Status, taskErr.Message, "{}", time.Since(stepStartTime).Milliseconds(), taskErr.Reason)
+
+			if stopOnFail {
+				log("INFO", fmt.Sprintf("[Task:%s] stop_on_fail=true，停止执行", taskID))
+				// 发送整体任务失败结果
+				e.sendTaskProgress(taskID, int32(totalSteps), completedSteps, passedSteps, failedSteps, stepTaskType, "FAILED")
+				e.sendTaskResultWithError(taskID, taskErr, nil, startTime)
+				return
+			}
+		} else {
+			passedSteps++
+			resultJSON, _ := json.Marshal(stepResult)
+			log("INFO", fmt.Sprintf("[Task:%s] 步骤 %s 执行成功", taskID, stepID))
+
+			// 发送步骤成功结果
+			e.sendStepResult(stepTaskID, stepID, true, pb.TaskStatus_TASK_STATUS_SUCCESS, "", string(resultJSON), time.Since(stepStartTime).Milliseconds(), pb.FailureReason_FAILURE_REASON_UNSPECIFIED)
+		}
+	}
+
+	// 所有步骤执行完成
+	log("INFO", fmt.Sprintf("[Task:%s] debug_case 完成: passed=%d, failed=%d", taskID, passedSteps, failedSteps))
+
+	// 发送最终进度和结果
+	finalStatus := "SUCCESS"
+	if failedSteps > 0 {
+		finalStatus = "PARTIAL_FAILED"
+	}
+	e.sendTaskProgress(taskID, int32(totalSteps), completedSteps, passedSteps, failedSteps, "", finalStatus)
+
+	// 发送整体任务结果
+	resultJSON, _ := json.Marshal(map[string]interface{}{
+		"total_steps":     totalSteps,
+		"completed_steps": completedSteps,
+		"passed_steps":    passedSteps,
+		"failed_steps":    failedSteps,
+	})
+
+	if failedSteps > 0 {
+		e.sendTaskResultWithError(taskID, newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, pb.FailureReason_FAILURE_REASON_UNSPECIFIED, fmt.Sprintf("部分步骤失败: %d/%d", failedSteps, totalSteps)), nil, startTime)
+	} else {
+		e.sendTaskResultSuccess(taskID, string(resultJSON), nil, startTime)
+	}
+}
+
+// executeSingleStep 执行单个步骤（内部方法，不发送确认）
+func (e *Executor) executeSingleStep(taskType string, payload map[string]interface{}) (interface{}, error) {
+	switch taskType {
+	case TaskTypeClickImage:
+		return e.executeClickImage(payload)
+	case TaskTypeClickText:
+		return e.executeClickText(payload)
+	case TaskTypeClickNative:
+		return e.executeClickNative(payload)
+	case TaskTypeTypeText:
+		return e.executeTypeText(payload)
+	case TaskTypeKeyPress:
+		return e.executeKeyPress(payload)
+	case TaskTypeScreenshot:
+		return e.executeScreenshot(payload)
+	case TaskTypeWaitImage:
+		return e.executeWaitImage(payload)
+	case TaskTypeWaitText:
+		return e.executeWaitText(payload)
+	case TaskTypeWaitTime:
+		return e.executeWaitTime(payload)
+	case TaskTypeMouseMove:
+		return e.executeMouseMove(payload)
+	case TaskTypeMouseClick:
+		return e.executeMouseClick(payload)
+	case TaskTypeActivateApp:
+		return e.executeActivateApp(payload)
+	case TaskTypeCloseApp:
+		return e.executeCloseApp(payload)
+	case TaskTypeGridClick:
+		return e.executeGridClick(payload)
+	case TaskTypeImageExists:
+		return e.executeImageExists(payload)
+	case TaskTypeTextExists:
+		return e.executeTextExists(payload)
+	case TaskTypeAssertImage:
+		return e.executeAssertImage(payload)
+	case TaskTypeAssertText:
+		return e.executeAssertText(payload)
+	case TaskTypeGetClipboard:
+		return e.executeGetClipboard(payload)
+	case TaskTypeSetClipboard:
+		return e.executeSetClipboard(payload)
+	default:
+		return nil, fmt.Errorf("未知的任务类型: %s", taskType)
+	}
+}
+
+// sendTaskProgress 发送任务进度
+func (e *Executor) sendTaskProgress(taskID string, totalSteps, completedSteps, passedSteps, failedSteps int32, currentStepName, status string) {
+	if e.client == nil {
+		return
+	}
+
+	msg := &pb.WorkerMessage{
+		MessageId: fmt.Sprintf("progress_%d", time.Now().UnixMilli()),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: &pb.WorkerMessage_TaskProgress{
+			TaskProgress: &pb.TaskProgress{
+				TaskId:          taskID,
+				TotalSteps:      totalSteps,
+				CompletedSteps:  completedSteps,
+				PassedSteps:     passedSteps,
+				FailedSteps:     failedSteps,
+				CurrentStepName: currentStepName,
+				Status:          status,
+			},
+		},
+	}
+
+	e.client.SendTaskMessage(msg)
+}
+
+// sendStepResult 发送单个步骤的执行结果
+func (e *Executor) sendStepResult(taskID, stepID string, success bool, status pb.TaskStatus, message, resultJSON string, durationMs int64, failureReason pb.FailureReason) {
+	if e.client == nil {
+		return
+	}
+
+	// 使用 TaskResult 发送步骤结果，但在 ResultJson 中包含 step_id 信息
+	resultWithStep, _ := json.Marshal(map[string]interface{}{
+		"step_id": stepID,
+		"result":  json.RawMessage(resultJSON),
+	})
+
+	msg := &pb.WorkerMessage{
+		MessageId: fmt.Sprintf("step_result_%d", time.Now().UnixMilli()),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: &pb.WorkerMessage_TaskResult{
+			TaskResult: &pb.TaskResult{
+				TaskId:        taskID,
+				Success:       success,
+				Status:        status,
+				Message:       message,
+				ResultJson:    string(resultWithStep),
+				DurationMs:    durationMs,
+				FailureReason: failureReason,
+			},
+		},
+	}
+
+	e.client.SendTaskMessage(msg)
 }
 
 // parseAutoOptions 解析自动化选项
