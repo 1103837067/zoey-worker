@@ -37,9 +37,11 @@ jobs:
           cd opencv-${OPENCV_VERSION}/build
           
           # 使用系统库避免兼容性问题 (Xcode 16.4 + 内置 zlib 冲突)
+          # CMAKE_POLICY_VERSION_MINIMUM 绕过 CMake 版本检查问题
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
             -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
             -DWITH_QT=OFF \
@@ -250,9 +252,11 @@ jobs:
           
           # 只编译需要的模块，完全禁用 GUI/视频/Qt/FFmpeg
           # 使用系统库避免兼容性问题
+          # CMAKE_POLICY_VERSION_MINIMUM 绕过 CMake 版本检查问题
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/mingw64 \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
             -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
             -DWITH_QT=OFF \
