@@ -260,13 +260,22 @@ jobs:
           
           echo "=== Collecting all dependencies ==="
           
-          # 递归复制 DLL 依赖（参考 macOS 打包经验）
+          # 需要排除的 DLL（会拖入 Qt6 依赖）
+          EXCLUDE_DLLS="highgui|videoio|viz|cvv|ovis|Qt6|Qt5"
+          
+          # 递归复制 DLL 依赖，排除不需要的模块
           copy_deps() {
             local file="$1"
             [ ! -f "$file" ] && return
             for dll in $(ldd "$file" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
-              if [ -n "$dll" ] && [ -f "$dll" ] && [ ! -f "dist/$(basename "$dll")" ]; then
-                echo "Copying: $(basename $dll)"
+              local dllname=$(basename "$dll")
+              # 跳过排除列表中的 DLL
+              if echo "$dllname" | grep -qE "$EXCLUDE_DLLS"; then
+                echo "  Skipping (excluded): $dllname"
+                continue
+              fi
+              if [ -n "$dll" ] && [ -f "$dll" ] && [ ! -f "dist/$dllname" ]; then
+                echo "Copying: $dllname"
                 cp "$dll" dist/ && copy_deps "$dll"
               fi
             done
@@ -339,13 +348,17 @@ jobs:
           done
           
           echo "=== Multi-round dependency check (like macOS) ==="
-          # 多轮检查，确保所有间接依赖都被复制（macOS 需要 3-4 轮）
+          # 多轮检查，确保所有间接依赖都被复制，但排除 Qt/highgui
           for round in 1 2 3 4 5; do
             echo "Round $round: checking dependencies..."
             changed=0
             for dll in dist/*.dll; do
               for dep in $(ldd "$dll" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
                 depname=$(basename "$dep")
+                # 跳过排除列表中的 DLL
+                if echo "$depname" | grep -qE "$EXCLUDE_DLLS"; then
+                  continue
+                fi
                 if [ -n "$dep" ] && [ -f "$dep" ] && [ ! -f "dist/$depname" ]; then
                   echo "  Found missing: $depname"
                   cp "$dep" dist/
@@ -354,6 +367,12 @@ jobs:
               done
             done
             [ $changed -eq 0 ] && echo "  No new dependencies found, stopping." && break
+          done
+          
+          # 最终清理：删除任何意外复制的排除文件
+          echo "=== Final cleanup: removing excluded DLLs ==="
+          for pattern in "*highgui*" "*videoio*" "*viz*" "*cvv*" "*ovis*" "Qt6*" "Qt5*"; do
+            rm -f dist/$pattern 2>/dev/null && echo "Removed: $pattern" || true
           done
           
           echo "=== Copying OCR models ==="
