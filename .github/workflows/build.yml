@@ -41,23 +41,17 @@ jobs:
           curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-osx-arm64-${ONNX_VERSION}.tgz" | tar xz
           mv onnxruntime-osx-arm64-${ONNX_VERSION} onnxruntime
           
-          echo "=== Downloading OCR Models (with Git LFS) ==="
-          mkdir -p models
-          # 安装 git-lfs 并拉取实际文件
-          brew install git-lfs || true
-          git lfs install
-          git clone https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
-          if [ -d "models/go-ocr-models" ]; then
-            cd models/go-ocr-models
-            git lfs pull
-            cd ../..
-            mv models/go-ocr-models/* models/
-            rm -rf models/go-ocr-models
-          fi
+          echo "=== Downloading PP-OCRv4 Mobile Models (lightweight ~16MB) ==="
+          mkdir -p models/paddle_weights
+          # 从 RapidOCR 仓库下载轻量级 PP-OCRv4 模型（支持中英文）
+          # det: 4.75MB, rec: 10.9MB - 比 Server 版本小 15 倍
+          curl -sL "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx" -o models/paddle_weights/det.onnx
+          curl -sL "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx" -o models/paddle_weights/rec.onnx
+          # 下载字典文件
+          curl -sL "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/ppocr_keys_v1.txt" -o models/paddle_weights/dict.txt
           
-          echo "=== Verifying ONNX model sizes ==="
-          ls -la models/paddle_weights/ || true
-          ls -la models/ddddocr_weights/ || true
+          echo "=== Verifying OCR model sizes ==="
+          ls -la models/paddle_weights/
 
       - name: Build CLI
         run: |
@@ -134,21 +128,13 @@ jobs:
             done
           done
           
-          echo "=== Copying OCR models (only essential files) ==="
+          echo "=== Copying OCR models ==="
           mkdir -p "${RESOURCES_DIR}/models"
-          # 只复制必需的模型文件，排除 lib、examples、assets、.git 等
-          for dir in paddle_weights ddddocr_weights; do
-            if [ -d "models/$dir" ]; then
-              cp -r "models/$dir" "${RESOURCES_DIR}/models/"
-            fi
-          done
-          # 复制必要的配置文件
-          [ -f "models/LICENSE" ] && cp "models/LICENSE" "${RESOURCES_DIR}/models/"
-          [ -f "models/README.md" ] && cp "models/README.md" "${RESOURCES_DIR}/models/"
+          cp -r models/paddle_weights "${RESOURCES_DIR}/models/"
           
           echo "=== Models directory size ==="
           du -sh "${RESOURCES_DIR}/models/"
-          du -sh "${RESOURCES_DIR}/models/"/* 2>/dev/null || true
+          ls -la "${RESOURCES_DIR}/models/paddle_weights/"
           
           echo "=== Signing ==="
           codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
@@ -206,11 +192,10 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-git-lfs
             zip
             unzip
             wget
-            git
+            curl
 
       - name: Download Pre-built OpenCV
         shell: msys2 {0}
@@ -232,25 +217,17 @@ jobs:
           unzip -q onnxruntime.zip
           mv onnxruntime-win-x64-${ONNX_VERSION} onnxruntime
           
-          echo "=== Downloading OCR Models (with Git LFS) ==="
-          mkdir -p models
-          # 安装 git-lfs 并拉取实际文件
-          git lfs install
-          git clone https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
-          if [ -d "models/go-ocr-models" ]; then
-            cd models/go-ocr-models
-            git lfs pull
-            cd ../..
-            mv models/go-ocr-models/* models/
-            rm -rf models/go-ocr-models
-          fi
+          echo "=== Downloading PP-OCRv4 Mobile Models (lightweight ~16MB) ==="
+          mkdir -p models/paddle_weights
+          # 从 RapidOCR 仓库下载轻量级 PP-OCRv4 模型（支持中英文）
+          curl -sL "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx" -o models/paddle_weights/det.onnx
+          curl -sL "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx" -o models/paddle_weights/rec.onnx
+          # 下载字典文件
+          curl -sL "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/ppocr_keys_v1.txt" -o models/paddle_weights/dict.txt
           
-          echo "Dependencies downloaded:"
+          echo "=== Verifying OCR model sizes ==="
           ls -la onnxruntime/lib/
-          ls -la models/
-          echo "=== Verifying ONNX model sizes ==="
-          ls -la models/paddle_weights/ || true
-          ls -la models/ddddocr_weights/ || true
+          ls -la models/paddle_weights/
 
       - name: Build
         shell: msys2 {0}
@@ -340,15 +317,12 @@ jobs:
             [ $changed -eq 0 ] && break
           done
           
-          echo "=== Copying OCR models (exclude lib folder) ==="
+          echo "=== Copying OCR models ==="
           mkdir -p dist/models
-          for item in models/*; do
-            itemname=$(basename "$item")
-            # 跳过 lib 目录（ONNX Runtime 已经在 exe 同目录）
-            if [ "$itemname" != "lib" ]; then
-              cp -r "$item" dist/models/
-            fi
-          done
+          cp -r models/paddle_weights dist/models/
+          
+          echo "=== Models size ==="
+          ls -la dist/models/paddle_weights/
           
           echo "=== Final package info ==="
           echo "EXE files:"
