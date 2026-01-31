@@ -21,7 +21,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install opencv dylibbundler || true
+          brew install opencv || true
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Download ONNX Runtime for macOS
@@ -74,59 +74,61 @@ jobs:
           echo "=== Copying ONNX Runtime ==="
           cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/" 2>/dev/null || true
           
-          # 使用 dylibbundler 自动处理依赖（推荐方案）
-          echo "=== Using dylibbundler to bundle dependencies ==="
-          dylibbundler -od -b -x "$EXECUTABLE" -d "${FRAMEWORKS_DIR}/" -p @executable_path/../Frameworks/ 2>&1 || {
-            echo "dylibbundler failed, falling back to manual method..."
-            
-            # 手动方案：复制所有 OpenCV dylibs
-            OPENCV_PREFIX="$(brew --prefix opencv)"
-            for dylib in ${OPENCV_PREFIX}/lib/libopencv*.dylib; do
-              [ -f "$dylib" ] && cp -L "$dylib" "${FRAMEWORKS_DIR}/" 2>/dev/null || true
+          # 只复制实际使用的 OpenCV 模块（与 Windows 保持一致）
+          echo "=== Copying ONLY required OpenCV modules ==="
+          OPENCV_PREFIX="$(brew --prefix opencv)"
+          # 项目使用: core, imgproc, imgcodecs, features2d, flann, calib3d
+          # 不使用: highgui(需要Qt), videoio(需要FFmpeg), viz(需要VTK)
+          for module in core imgproc imgcodecs features2d flann calib3d photo ml objdetect xfeatures2d; do
+            for dylib in ${OPENCV_PREFIX}/lib/libopencv_${module}*.dylib; do
+              [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/" 2>/dev/null || true
             done
-            
-            # 多轮递归复制依赖
-            for round in 1 2 3 4 5; do
-              echo "Round $round: checking dependencies..."
-              changed=0
-              for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
-                for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
-                  depname=$(basename "$dep")
-                  if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
-                    if [[ "$dep" == @rpath* ]]; then
-                      found_lib=$(find /opt/homebrew -name "${depname}" 2>/dev/null | head -1)
-                    else
-                      found_lib="$dep"
-                    fi
-                    if [ -n "$found_lib" ] && [ -f "$found_lib" ]; then
-                      echo "  Copying: $depname"
-                      cp -L "$found_lib" "${FRAMEWORKS_DIR}/"
-                      changed=1
-                    fi
-                  fi
-                done
-              done
-              [ $changed -eq 0 ] && break
-            done
-            
-            # 修复可执行文件引用
-            for dep in $(otool -L "$EXECUTABLE" | grep -E "/opt/homebrew|/usr/local" | awk '{print $1}'); do
-              libname=$(basename "$dep")
-              [ -f "${FRAMEWORKS_DIR}/${libname}" ] && \
-                install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
-            done
-            
-            # 修复所有 dylib 路径
+          done
+          
+          # 多轮递归复制依赖
+          echo "=== Copying transitive dependencies ==="
+          for round in 1 2 3 4 5; do
+            echo "Round $round: checking dependencies..."
+            changed=0
             for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
-              libname=$(basename "$dylib")
-              install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
-              for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local" | awk '{print $1}'); do
+              for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
                 depname=$(basename "$dep")
-                [ -f "${FRAMEWORKS_DIR}/${depname}" ] && \
-                  install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
+                if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
+                  if [[ "$dep" == @rpath* ]]; then
+                    found_lib=$(find /opt/homebrew -name "${depname}" 2>/dev/null | head -1)
+                  else
+                    found_lib="$dep"
+                  fi
+                  if [ -n "$found_lib" ] && [ -f "$found_lib" ]; then
+                    echo "  Copying: $depname"
+                    cp -L "$found_lib" "${FRAMEWORKS_DIR}/"
+                    changed=1
+                  fi
+                fi
               done
             done
-          }
+            [ $changed -eq 0 ] && break
+          done
+          
+          # 修复可执行文件引用
+          echo "=== Fixing executable references ==="
+          for dep in $(otool -L "$EXECUTABLE" | grep -E "/opt/homebrew|/usr/local" | awk '{print $1}'); do
+            libname=$(basename "$dep")
+            [ -f "${FRAMEWORKS_DIR}/${libname}" ] && \
+              install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
+          done
+          
+          # 修复所有 dylib 路径
+          echo "=== Fixing dylib paths ==="
+          for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+            libname=$(basename "$dylib")
+            install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
+            for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local" | awk '{print $1}'); do
+              depname=$(basename "$dep")
+              [ -f "${FRAMEWORKS_DIR}/${depname}" ] && \
+                install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
+            done
+          done
           
           # 复制 OCR 模型
           echo "=== Copying OCR models ==="
