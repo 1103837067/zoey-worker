@@ -84,37 +84,28 @@ jobs:
           echo "=== Copying ONNX Runtime ==="
           cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/"
           
-          echo "=== Copying OpenCV dylibs ==="
+          echo "=== Copying OpenCV dylibs (only non-symlinks) ==="
           for dylib in ${OPENCV_PREFIX}/lib/*.dylib; do
             [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/"
           done
           
-          echo "=== Copying transitive dependencies ==="
-          for round in 1 2 3 4 5; do
-            echo "Round $round..."
-            changed=0
-            for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
-              [ ! -f "$dylib" ] && continue
-              for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
-                depname=$(basename "$dep")
-                if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
-                  if [[ "$dep" == @rpath* ]]; then
-                    found_lib=$(find /opt/homebrew -name "${depname}" 2>/dev/null | head -1)
-                  else
-                    found_lib="$dep"
-                  fi
-                  if [ -n "$found_lib" ] && [ -f "$found_lib" ]; then
-                    echo "  Copying: $depname"
-                    cp -L "$found_lib" "${FRAMEWORKS_DIR}/"
-                    changed=1
-                  fi
+          echo "=== Copying only essential image codec dependencies ==="
+          # 只复制必需的图像编解码库，不递归复制所有 Homebrew 依赖
+          ESSENTIAL_LIBS="libjpeg libpng libtiff libwebp libopenjp2 libzstd liblzma libbrotli libsharpyuv"
+          for lib in $ESSENTIAL_LIBS; do
+            for dylib in /opt/homebrew/lib/${lib}*.dylib; do
+              if [ -f "$dylib" ] && [ ! -L "$dylib" ]; then
+                libname=$(basename "$dylib")
+                if [ ! -f "${FRAMEWORKS_DIR}/${libname}" ]; then
+                  echo "  Copying: $libname"
+                  cp "$dylib" "${FRAMEWORKS_DIR}/"
                 fi
-              done
+              fi
             done
-            [ $changed -eq 0 ] && break
           done
           
           echo "=== Fixing library paths ==="
+          # 修复主程序的库引用
           for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
             libname=$(basename "$dep")
             if [ -f "${FRAMEWORKS_DIR}/${libname}" ]; then
@@ -122,6 +113,7 @@ jobs:
             fi
           done
           
+          # 修复所有 dylib 的库引用
           for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
             [ ! -f "$dylib" ] && continue
             libname=$(basename "$dylib")
@@ -146,6 +138,8 @@ jobs:
           
           cd dist
           echo "=== Final package info ==="
+          ls -la ZoeyWorker.app/Contents/Frameworks/ | head -20
+          echo "Total dylibs: $(ls -1 ZoeyWorker.app/Contents/Frameworks/*.dylib | wc -l)"
           du -sh ZoeyWorker.app
           echo "Frameworks:"
           ls -la ZoeyWorker.app/Contents/Frameworks/
