@@ -27,7 +27,9 @@ int activateAppByPID(int pid) {
     if (app == nil) {
         return 0;
     }
-    [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+    // 使用 NSApplicationActivateAllWindows 替代废弃的 NSApplicationActivateIgnoringOtherApps
+    // macOS 14+ 中 ignoringOtherApps 已被废弃且无效
+    [app activateWithOptions:NSApplicationActivateAllWindows];
     return 1;
 }
 
@@ -42,7 +44,7 @@ int activateAppByName(const char* name) {
         for (NSRunningApplication* app in allApps) {
             NSString* localizedName = [app localizedName];
             if (localizedName && [localizedName localizedCaseInsensitiveContainsString:appName]) {
-                [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+                [app activateWithOptions:NSApplicationActivateAllWindows];
                 return 1;
             }
         }
@@ -50,7 +52,7 @@ int activateAppByName(const char* name) {
     }
     
     NSRunningApplication* app = [apps firstObject];
-    [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+    [app activateWithOptions:NSApplicationActivateAllWindows];
     return 1;
 }
 
