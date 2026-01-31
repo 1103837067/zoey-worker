@@ -25,7 +25,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/opencv-minimal
-          key: opencv-${{ env.OPENCV_VERSION }}-macos-minimal-v2
+          key: opencv-${{ env.OPENCV_VERSION }}-macos-minimal-v3
 
       - name: Install Build Dependencies
         run: |
@@ -280,7 +280,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:/opencv-minimal
-          key: opencv-${{ env.OPENCV_VERSION }}-windows-minimal-v2
+          key: opencv-${{ env.OPENCV_VERSION }}-windows-minimal-v3
 
       - name: Build OpenCV from source (minimal)
         if: steps.cache-opencv-win.outputs.cache-hit != 'true'
@@ -322,13 +322,13 @@ jobs:
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_DOCS=OFF \
             -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_ZLIB=ON \
-            -DBUILD_PNG=ON \
-            -DBUILD_JPEG=ON \
-            -DBUILD_TIFF=ON \
-            -DBUILD_WEBP=ON \
-            -DBUILD_OPENJPEG=ON \
-            -DBUILD_OPENEXR=ON \
+            -DBUILD_ZLIB=OFF \
+            -DBUILD_PNG=OFF \
+            -DBUILD_JPEG=OFF \
+            -DBUILD_TIFF=OFF \
+            -DBUILD_WEBP=OFF \
+            -DBUILD_OPENJPEG=OFF \
+            -DBUILD_OPENEXR=OFF \
             -DOPENCV_GENERATE_PKGCONFIG=OFF
           
           ninja -j$(nproc)
