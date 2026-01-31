@@ -19,6 +19,9 @@ func main() {
 	// 创建应用实例
 	app := NewApp()
 
+	// 初始化系统托盘（仅 Windows 支持）
+	initSystray(app)
+
 	// 创建 Wails 应用
 	err := wails.Run(&options.App{
 		Title:     "Zoey Worker",
@@ -31,7 +34,10 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1}, // 白色背景
 		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+		OnShutdown: func(ctx context.Context) {
+			quitSystray()
+			app.shutdown(ctx)
+		},
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			// 关闭窗口时隐藏而不是退出
 			cfg := app.LoadConfig()

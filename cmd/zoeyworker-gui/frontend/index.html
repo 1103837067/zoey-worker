@@ -136,60 +136,46 @@
     <!-- Main Content -->
     <main class="flex-1 overflow-auto p-4 bg-muted/30">
       
-      <!-- Connection Tab -->
-      <div id="tab-connection" class="tab-content max-w-md mx-auto">
-        <div class="bg-card rounded-lg border shadow-sm p-6">
-          <h2 class="text-base font-semibold mb-5 flex items-center gap-2">
-            <i data-lucide="server" class="w-5 h-5 text-muted-foreground"></i>
-            服务器连接
-          </h2>
-          
-          <form id="connectForm" class="space-y-4">
+      <!-- Connection Tab - 居中显示，不需要滚动 -->
+      <div id="tab-connection" class="tab-content h-full flex items-center justify-center">
+        <div class="bg-card rounded-lg border shadow-sm p-5 w-full max-w-xs">
+          <form id="connectForm" class="space-y-3">
             <div>
-              <label class="block text-sm font-medium mb-1.5">服务器地址</label>
+              <label class="block text-xs font-medium mb-1 text-muted-foreground">服务器地址</label>
               <input type="text" id="serverUrl" value="localhost:50051" placeholder="localhost:50051"
                 class="w-full px-3 py-2 bg-background border rounded-md text-sm placeholder:text-muted-foreground transition-colors">
             </div>
             
             <div>
-              <label class="block text-sm font-medium mb-1.5">Access Key</label>
+              <label class="block text-xs font-medium mb-1 text-muted-foreground">Access Key</label>
               <input type="text" id="accessKey" placeholder="输入 Access Key"
                 class="w-full px-3 py-2 bg-background border rounded-md text-sm placeholder:text-muted-foreground transition-colors">
             </div>
             
             <div>
-              <label class="block text-sm font-medium mb-1.5">Secret Key</label>
+              <label class="block text-xs font-medium mb-1 text-muted-foreground">Secret Key</label>
               <input type="password" id="secretKey" placeholder="输入 Secret Key"
                 class="w-full px-3 py-2 bg-background border rounded-md text-sm placeholder:text-muted-foreground transition-colors">
             </div>
             
-            <div id="errorMessage" class="hidden bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm"></div>
+            <div id="errorMessage" class="hidden bg-destructive/10 border border-destructive/20 text-destructive px-3 py-2 rounded-md text-xs"></div>
             
-            <div class="flex gap-3 pt-2">
+            <div class="flex gap-2 pt-1">
               <button type="submit" id="connectBtn"
-                class="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium py-2.5 px-4 rounded-md transition-colors text-sm">
+                class="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium py-2 px-4 rounded-md transition-colors text-sm">
                 连接
               </button>
               <button type="button" id="disconnectBtn"
-                class="hidden flex-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium py-2.5 px-4 rounded-md transition-colors text-sm">
+                class="hidden flex-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium py-2 px-4 rounded-md transition-colors text-sm">
                 断开
               </button>
             </div>
           </form>
-          
-          <div id="connectionInfo" class="hidden mt-6 pt-5 border-t">
-            <h3 class="text-sm font-medium mb-3">连接信息</h3>
-            <div class="space-y-2 text-sm">
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">Agent ID</span>
-                <span id="agentIdDisplay" class="font-mono text-xs bg-muted px-2 py-0.5 rounded"></span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-muted-foreground">Agent 名称</span>
-                <span id="agentNameDisplay"></span>
-              </div>
-            </div>
-          </div>
+        </div>
+        <!-- 隐藏的连接信息元素，供 JS 兼容 -->
+        <div id="connectionInfo" class="hidden">
+          <span id="agentIdDisplay"></span>
+          <span id="agentNameDisplay"></span>
         </div>
       </div>
       
