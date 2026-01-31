@@ -19,43 +19,81 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false  # 禁用缓存避免 gtar 问题
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies
         run: |
-          brew install opencv || true
+          brew install cmake ninja pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Download ONNX Runtime for macOS
+      - name: Build OpenCV from source (minimal, no Qt/FFmpeg/highgui)
         run: |
-          # 下载 ONNX Runtime
+          OPENCV_VERSION="4.9.0"
+          
+          echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
+          curl -sL "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
+          curl -sL "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
+          
+          echo "=== Building OpenCV (minimal modules only) ==="
+          mkdir -p opencv-${OPENCV_VERSION}/build
+          cd opencv-${OPENCV_VERSION}/build
+          
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
+            -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
+            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
+            -DWITH_QT=OFF \
+            -DWITH_GTK=OFF \
+            -DWITH_FFMPEG=OFF \
+            -DWITH_GSTREAMER=OFF \
+            -DWITH_AVFOUNDATION=OFF \
+            -DWITH_VTK=OFF \
+            -DWITH_OPENGL=OFF \
+            -DWITH_OPENCL=OFF \
+            -DBUILD_opencv_highgui=OFF \
+            -DBUILD_opencv_videoio=OFF \
+            -DBUILD_opencv_viz=OFF \
+            -DBUILD_opencv_python3=OFF \
+            -DBUILD_opencv_python2=OFF \
+            -DBUILD_opencv_java=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DOCS=OFF \
+            -DBUILD_SHARED_LIBS=ON \
+            -DOPENCV_GENERATE_PKGCONFIG=ON
+          
+          ninja -j$(sysctl -n hw.ncpu)
+          ninja install
+          
+          echo "=== OpenCV build complete ==="
+          ls -la $HOME/opencv-minimal/lib/
+          
+      - name: Download ONNX Runtime & OCR Models
+        run: |
           curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-osx-arm64-${ONNX_VERSION}.tgz" | tar xz
           mv onnxruntime-osx-arm64-${ONNX_VERSION} onnxruntime
           
-          # 下载 OCR 模型
           mkdir -p models
           git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
           if [ -d "models/go-ocr-models" ]; then
             mv models/go-ocr-models/* models/
             rm -rf models/go-ocr-models
           fi
-          
-          echo "Dependencies downloaded:"
-          ls -la onnxruntime/lib/
-          ls -la models/
 
       - name: Build CLI
         run: |
-          export PKG_CONFIG_PATH="$(brew --prefix opencv)/lib/pkgconfig"
-          export CGO_CPPFLAGS="-I$(brew --prefix opencv)/include/opencv4"
-          export CGO_LDFLAGS="-L$(brew --prefix opencv)/lib"
+          export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
+          export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib"
           
           mkdir -p dist
           go build -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
 
       - name: Build GUI App
         run: |
-          export PKG_CONFIG_PATH="$(brew --prefix opencv)/lib/pkgconfig"
-          export CGO_CPPFLAGS="-I$(brew --prefix opencv)/include/opencv4"
-          export CGO_LDFLAGS="-L$(brew --prefix opencv)/lib"
+          export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
+          export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib"
           
           cd cmd/zoeyworker-gui
           wails build -ldflags "-s -w" -clean
@@ -66,29 +104,22 @@ jobs:
           FRAMEWORKS_DIR="${APP_BUNDLE}/Contents/Frameworks"
           RESOURCES_DIR="${APP_BUNDLE}/Contents/Resources"
           EXECUTABLE="${APP_BUNDLE}/Contents/MacOS/ZoeyWorker"
+          OPENCV_PREFIX="$HOME/opencv-minimal"
           
           mkdir -p "${FRAMEWORKS_DIR}"
           mkdir -p "${RESOURCES_DIR}/models"
           
-          # 复制 ONNX Runtime dylib
           echo "=== Copying ONNX Runtime ==="
-          cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/" 2>/dev/null || true
+          cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/"
           
-          # 只复制实际使用的 OpenCV 模块（与 Windows 保持一致）
-          echo "=== Copying ONLY required OpenCV modules ==="
-          OPENCV_PREFIX="$(brew --prefix opencv)"
-          # 项目使用: core, imgproc, imgcodecs, features2d, flann, calib3d
-          # 不使用: highgui(需要Qt), videoio(需要FFmpeg), viz(需要VTK)
-          for module in core imgproc imgcodecs features2d flann calib3d photo ml objdetect xfeatures2d; do
-            for dylib in ${OPENCV_PREFIX}/lib/libopencv_${module}*.dylib; do
-              [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/" 2>/dev/null || true
-            done
+          echo "=== Copying OpenCV dylibs (self-built, no highgui/videoio) ==="
+          for dylib in ${OPENCV_PREFIX}/lib/*.dylib; do
+            [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/"
           done
           
-          # 多轮递归复制依赖
           echo "=== Copying transitive dependencies ==="
           for round in 1 2 3 4 5; do
-            echo "Round $round: checking dependencies..."
+            echo "Round $round..."
             changed=0
             for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
               for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
@@ -110,54 +141,41 @@ jobs:
             [ $changed -eq 0 ] && break
           done
           
-          # 修复可执行文件引用
-          echo "=== Fixing executable references ==="
-          for dep in $(otool -L "$EXECUTABLE" | grep -E "/opt/homebrew|/usr/local" | awk '{print $1}'); do
+          echo "=== Fixing paths ==="
+          for dep in $(otool -L "$EXECUTABLE" | grep -E "/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
             libname=$(basename "$dep")
             [ -f "${FRAMEWORKS_DIR}/${libname}" ] && \
               install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
           done
           
-          # 修复所有 dylib 路径
-          echo "=== Fixing dylib paths ==="
           for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
             libname=$(basename "$dylib")
             install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
-            for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local" | awk '{print $1}'); do
+            for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
               depname=$(basename "$dep")
               [ -f "${FRAMEWORKS_DIR}/${depname}" ] && \
                 install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
             done
           done
           
-          # 复制 OCR 模型
           echo "=== Copying OCR models ==="
           cp -r models/* "${RESOURCES_DIR}/models/" 2>/dev/null || true
           
-          # 签名（ad-hoc）
-          echo "=== Signing app bundle ==="
+          echo "=== Signing ==="
           codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
           
-          # 打包
           mkdir -p dist
           mv "$APP_BUNDLE" dist/
           mv dist/zoeyworker dist/ZoeyWorker.app/Contents/MacOS/zoeyworker-cli
           
           cd dist
-          echo "=== Final package info ==="
-          echo "App bundle size:"
+          echo "=== Final size ==="
           du -sh ZoeyWorker.app
-          echo "Frameworks count:"
-          ls -1 ZoeyWorker.app/Contents/Frameworks/ | wc -l
-          
-          # 验证：检查是否还有外部依赖
-          echo "=== Verifying no external dependencies ==="
-          otool -L ZoeyWorker.app/Contents/MacOS/ZoeyWorker | grep -E "/opt/homebrew|/usr/local" && echo "WARNING: External dependencies found!" || echo "OK: No external dependencies"
+          echo "Frameworks:"
+          ls -la ZoeyWorker.app/Contents/Frameworks/
           
           zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app
           rm -rf ZoeyWorker.app
-          
-          echo "Package created:"
           ls -lh
 
       - uses: actions/upload-artifact@v4
