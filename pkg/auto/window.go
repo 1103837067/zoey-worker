@@ -14,9 +14,10 @@ import (
 // 注意：Go 使用 PID 作为窗口标识符，与 Python 的 hwnd 不同
 // robotgo 跨平台实现：macOS 用 PID，Windows 内部转换为 hwnd
 type WindowInfo struct {
-	PID    int    `json:"pid"`
-	Title  string `json:"title"`
-	Bounds Region `json:"bounds"`
+	PID       int    `json:"pid"`
+	Title     string `json:"title"`
+	OwnerName string `json:"owner_name"` // 进程名，如 "Feishu", "WeChat"
+	Bounds    Region `json:"bounds"`
 }
 
 // GetWindows 获取窗口列表
@@ -64,9 +65,11 @@ func getWindowsRobotgo(filter ...string) ([]WindowInfo, error) {
 		// 获取窗口边界
 		x, y, w, h := robotgo.GetBounds(pid)
 
+		name, _ := robotgo.FindName(pid)
 		windows = append(windows, WindowInfo{
-			PID:   pid,
-			Title: title,
+			PID:       pid,
+			Title:     title,
+			OwnerName: name,
 			Bounds: Region{
 				X:      x,
 				Y:      y,

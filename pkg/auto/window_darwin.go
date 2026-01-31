@@ -33,6 +33,19 @@ int activateAppByPID(int pid) {
     return 1;
 }
 
+// 通过 PID 获取应用的 Bundle ID
+const char* getBundleIDByPID(int pid) {
+    NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+    if (app == nil) {
+        return "";
+    }
+    NSString* bundleID = [app bundleIdentifier];
+    if (bundleID == nil) {
+        return "";
+    }
+    return [bundleID UTF8String];
+}
+
 // 通过应用名称激活窗口
 int activateAppByName(const char* name) {
     NSString* appName = [NSString stringWithUTF8String:name];
@@ -199,8 +212,9 @@ func getWindowsDarwin(filter ...string) ([]WindowInfo, error) {
 		}
 
 		result = append(result, WindowInfo{
-			PID:   int(w.pid),
-			Title: title,
+			PID:       int(w.pid),
+			Title:     title,
+			OwnerName: ownerName,
 			Bounds: Region{
 				X:      int(w.x),
 				Y:      int(w.y),
@@ -267,32 +281,97 @@ func activateWindowByPIDPlatform(pid int) error {
 	return nil
 }
 
-// activateWindowByTitlePlatform 通过窗口标题激活特定窗口
+// activateWindowByTitlePlatform 通过进程名和窗口标题激活特定窗口
+// appName: 进程名（如 "Feishu", "WeChat", "Microsoft Edge"）
+// windowTitle: 窗口标题的部分内容（如 "飞书", "微信"）
+//
+// 统一逻辑：获取所有窗口 → 按进程名/窗口标题匹配 → 用 PID 激活
+// 不依赖 AppleScript 的应用名，避免本地化名称问题
 func activateWindowByTitlePlatform(appName, windowTitle string) error {
-	// 先激活应用
-	script := fmt.Sprintf(`tell application "%s" to activate`, appName)
-	cmd := exec.Command("osascript", "-e", script)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("无法激活应用 %s: %w", appName, err)
+	// 1. 获取所有窗口（不过滤）
+	allWindows, err := getWindowsDarwin()
+	if err != nil {
+		return fmt.Errorf("获取窗口列表失败: %w", err)
 	}
-	
-	// 然后切换到特定窗口
-	// 使用 System Events 通过窗口标题匹配
-	windowScript := fmt.Sprintf(`
-		tell application "System Events"
-			tell process "%s"
-				set frontmost to true
-				repeat with w in windows
-					if name of w contains "%s" then
-						perform action "AXRaise" of w
-						return true
-					end if
-				end repeat
+
+	// 2. 查找匹配的窗口
+	var targetWindow *WindowInfo
+	appNameLower := strings.ToLower(appName)
+	windowTitleLower := strings.ToLower(windowTitle)
+
+	// 优先级 1: 进程名 + 窗口标题都匹配
+	for i := range allWindows {
+		w := &allWindows[i]
+		ownerMatch := strings.Contains(strings.ToLower(w.OwnerName), appNameLower)
+		titleMatch := strings.Contains(strings.ToLower(w.Title), windowTitleLower)
+		if ownerMatch && titleMatch {
+			targetWindow = w
+			break
+		}
+	}
+
+	// 优先级 2: 只匹配进程名
+	if targetWindow == nil {
+		for i := range allWindows {
+			w := &allWindows[i]
+			if strings.Contains(strings.ToLower(w.OwnerName), appNameLower) {
+				targetWindow = w
+				break
+			}
+		}
+	}
+
+	// 优先级 3: 只匹配窗口标题
+	if targetWindow == nil {
+		for i := range allWindows {
+			w := &allWindows[i]
+			if strings.Contains(strings.ToLower(w.Title), windowTitleLower) {
+				targetWindow = w
+				break
+			}
+		}
+	}
+
+	if targetWindow == nil {
+		return fmt.Errorf("未找到匹配的窗口: appName=%s, windowTitle=%s", appName, windowTitle)
+	}
+
+	// 3. 获取 Bundle ID，用于激活隐藏/最小化的应用
+	bundleID := C.GoString(C.getBundleIDByPID(C.int(targetWindow.PID)))
+
+	// 4. 使用 open -b 命令打开应用
+	// 这是最可靠的方式，可以：
+	// - 恢复隐藏到 Dock 的窗口
+	// - 重新打开已关闭但后台运行的应用窗口
+	if bundleID != "" {
+		exec.Command("open", "-b", bundleID).Run()
+	} else {
+		// 回退到原生 API
+		result := C.activateAppByPID(C.int(targetWindow.PID))
+		if result == 0 {
+			return fmt.Errorf("无法激活 PID %d 的应用", targetWindow.PID)
+		}
+	}
+
+	// 5. 如果有多个窗口，尝试激活特定窗口
+	processName := targetWindow.OwnerName
+	if processName != "" && windowTitle != "" {
+		windowScript := fmt.Sprintf(`
+			tell application "System Events"
+				tell process "%s"
+					set frontmost to true
+					repeat with w in windows
+						if name of w contains "%s" then
+							perform action "AXRaise" of w
+							exit repeat
+						end if
+					end repeat
+				end tell
 			end tell
-		end tell
-		return false
-	`, appName, windowTitle)
-	
-	exec.Command("osascript", "-e", windowScript).Run()
+		`, processName, windowTitle)
+
+		exec.Command("osascript", "-e", windowScript).Run()
+	}
+
 	return nil
 }
