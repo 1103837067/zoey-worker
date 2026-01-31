@@ -97,16 +97,43 @@ jobs:
       - name: Package with DLLs
         shell: msys2 {0}
         run: |
+          set -e
+          
+          # 检查 exe 是否存在
+          if ! ls dist/*.exe 1>/dev/null 2>&1; then
+            echo "ERROR: No .exe files found in dist/"
+            ls -la dist/ || echo "dist/ directory does not exist"
+            exit 1
+          fi
+          
+          echo "Found exe files:"
+          ls -la dist/*.exe
+          
           # 自动复制所有依赖 DLL
           copy_deps() {
-            for dll in $(ldd "$1" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
-              [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/ && copy_deps "$dll"
+            local file="$1"
+            if [ ! -f "$file" ]; then
+              return
+            fi
+            for dll in $(ldd "$file" 2>/dev/null | grep mingw64 | awk '{print $3}'); do
+              if [ -n "$dll" ] && [ -f "$dll" ] && [ ! -f "dist/$(basename "$dll")" ]; then
+                echo "Copying: $dll"
+                cp "$dll" dist/ && copy_deps "$dll"
+              fi
             done
           }
-          for exe in dist/*.exe; do copy_deps "$exe"; done
           
+          for exe in dist/*.exe; do
+            echo "Processing: $exe"
+            copy_deps "$exe"
+          done
+          
+          echo "Creating zip package..."
           cd dist && zip -r ../ZoeyWorker-windows.zip * && cd ..
           rm -rf dist && mkdir dist && mv ZoeyWorker-windows.zip dist/
+          
+          echo "Package created successfully:"
+          ls -la dist/
 
       - uses: actions/upload-artifact@v4
         with:
