@@ -1,0 +1,245 @@
+env:
+  OPENCV_VERSION: "4.10.0"
+  ONNX_VERSION: "1.19.2"
+  GO_VERSION: "1.23.0"
+
+# ==================== macOS ARM64 构建 ====================
+macos_task:
+  name: Build macOS ARM64
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-runner:sonoma
+  timeout_in: 120m
+  
+  env:
+    PATH: /opt/homebrew/bin:/usr/local/go/bin:${HOME}/go/bin:${PATH}
+  
+  install_go_script:
+    - curl -sL "https://go.dev/dl/go${GO_VERSION}.darwin-arm64.tar.gz" | sudo tar -C /usr/local -xz
+    - go version
+  
+  install_deps_script:
+    - brew install cmake ninja pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
+    - go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  
+  build_opencv_script:
+    - curl -sL "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
+    - curl -sL "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
+    - mkdir -p opencv-${OPENCV_VERSION}/build
+    - cd opencv-${OPENCV_VERSION}/build
+    - |
+      cmake .. -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
+        -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
+        -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
+        -DWITH_QT=OFF -DWITH_GTK=OFF -DWITH_FFMPEG=OFF -DWITH_GSTREAMER=OFF \
+        -DWITH_AVFOUNDATION=OFF -DWITH_VTK=OFF -DWITH_OPENGL=OFF -DWITH_OPENCL=OFF \
+        -DWITH_IPP=OFF -DWITH_TBB=OFF -DWITH_LAPACK=OFF \
+        -DBUILD_opencv_apps=OFF -DBUILD_opencv_highgui=OFF -DBUILD_opencv_videoio=OFF \
+        -DBUILD_opencv_viz=OFF -DBUILD_opencv_python3=OFF -DBUILD_opencv_python2=OFF \
+        -DBUILD_opencv_java=OFF -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF \
+        -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_ZLIB=OFF -DBUILD_PNG=OFF -DBUILD_JPEG=OFF -DBUILD_TIFF=OFF \
+        -DBUILD_WEBP=OFF -DBUILD_OPENJPEG=OFF -DBUILD_OPENEXR=OFF \
+        -DOPENCV_GENERATE_PKGCONFIG=OFF
+    - ninja -j$(sysctl -n hw.ncpu)
+    - ninja install
+  
+  create_pkgconfig_script:
+    - mkdir -p $HOME/opencv-minimal/lib/pkgconfig
+    - |
+      cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'EOF'
+      prefix=${pcfiledir}/../..
+      exec_prefix=${prefix}
+      libdir=${exec_prefix}/lib
+      includedir=${prefix}/include/opencv4
+
+      Name: OpenCV
+      Description: Open Source Computer Vision Library
+      Version: 4.10.0
+      Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
+      Cflags: -I${includedir}
+      EOF
+  
+  download_runtime_script:
+    - curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-osx-arm64-${ONNX_VERSION}.tgz" | tar xz
+    - mv onnxruntime-osx-arm64-${ONNX_VERSION} onnxruntime
+    - mkdir -p models
+    - git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
+    - |
+      if [ -d "models/go-ocr-models" ]; then
+        mv models/go-ocr-models/* models/
+        rm -rf models/go-ocr-models
+      fi
+  
+  build_app_script:
+    - export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
+    - export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
+    - export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -Wl,-rpath,@executable_path/../Frameworks"
+    - mkdir -p dist
+    - go build -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
+    - cd cmd/zoeyworker-gui
+    - wails build -ldflags "-s -w" -clean
+  
+  package_script:
+    - |
+      APP_BUNDLE="cmd/zoeyworker-gui/build/bin/ZoeyWorker.app"
+      FRAMEWORKS_DIR="${APP_BUNDLE}/Contents/Frameworks"
+      RESOURCES_DIR="${APP_BUNDLE}/Contents/Resources"
+      EXECUTABLE="${APP_BUNDLE}/Contents/MacOS/ZoeyWorker"
+      OPENCV_PREFIX="$HOME/opencv-minimal"
+      
+      mkdir -p "${FRAMEWORKS_DIR}" "${RESOURCES_DIR}/models"
+      cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/"
+      
+      for dylib in ${OPENCV_PREFIX}/lib/*.dylib; do
+        [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/"
+      done
+      
+      # 复制依赖库
+      for round in 1 2 3 4 5; do
+        changed=0
+        for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+          [ ! -f "$dylib" ] && continue
+          for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
+            depname=$(basename "$dep")
+            if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
+              if [[ "$dep" == @rpath* ]]; then
+                found_lib=$(find /opt/homebrew -name "${depname}" 2>/dev/null | head -1)
+              else
+                found_lib="$dep"
+              fi
+              if [ -n "$found_lib" ] && [ -f "$found_lib" ]; then
+                cp -L "$found_lib" "${FRAMEWORKS_DIR}/"
+                changed=1
+              fi
+            fi
+          done
+        done
+        [ $changed -eq 0 ] && break
+      done
+      
+      # 修复依赖路径
+      for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
+        libname=$(basename "$dep")
+        [ -f "${FRAMEWORKS_DIR}/${libname}" ] && install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
+      done
+      
+      for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+        [ ! -f "$dylib" ] && continue
+        libname=$(basename "$dylib")
+        install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
+        for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
+          depname=$(basename "$dep")
+          [ -f "${FRAMEWORKS_DIR}/${depname}" ] && install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
+        done
+      done
+      
+      cp -r models/* "${RESOURCES_DIR}/models/" 2>/dev/null || true
+      codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
+      
+      mkdir -p dist
+      mv "$APP_BUNDLE" dist/
+      mv dist/zoeyworker dist/ZoeyWorker.app/Contents/MacOS/zoeyworker-cli
+      
+      cd dist
+      zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app
+      rm -rf ZoeyWorker.app
+      ls -lh
+  
+  binaries_artifacts:
+    path: "dist/*.zip"
+
+# ==================== Windows x64 构建 ====================
+windows_task:
+  name: Build Windows x64
+  windows_container:
+    image: cirrusci/windowsservercore:2022
+    cpu: 4
+    memory: 8G
+  timeout_in: 120m
+  
+  install_deps_script:
+    - choco install golang --version %GO_VERSION% -y
+    - choco install cmake ninja mingw git -y
+    - refreshenv
+  
+  install_wails_script:
+    - set PATH=C:\Go\bin;%USERPROFILE%\go\bin;%PATH%
+    - go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  
+  build_opencv_script:
+    - curl -sL "https://github.com/opencv/opencv/archive/refs/tags/%OPENCV_VERSION%.tar.gz" -o opencv.tar.gz
+    - tar -xzf opencv.tar.gz
+    - curl -sL "https://github.com/opencv/opencv_contrib/archive/refs/tags/%OPENCV_VERSION%.tar.gz" -o opencv_contrib.tar.gz
+    - tar -xzf opencv_contrib.tar.gz
+    - mkdir opencv-%OPENCV_VERSION%\build
+    - cd opencv-%OPENCV_VERSION%\build
+    - |
+      cmake .. -G "Ninja" ^
+        -DCMAKE_BUILD_TYPE=Release ^
+        -DCMAKE_INSTALL_PREFIX=C:\opencv-minimal ^
+        -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ ^
+        -DOPENCV_EXTRA_MODULES_PATH=..\..\opencv_contrib-%OPENCV_VERSION%\modules ^
+        -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d ^
+        -DWITH_QT=OFF -DWITH_GTK=OFF -DWITH_FFMPEG=OFF -DWITH_GSTREAMER=OFF ^
+        -DWITH_VTK=OFF -DWITH_OPENGL=OFF -DWITH_OPENCL=OFF ^
+        -DWITH_IPP=OFF -DWITH_TBB=OFF -DWITH_LAPACK=OFF ^
+        -DBUILD_opencv_apps=OFF -DBUILD_opencv_highgui=OFF -DBUILD_opencv_videoio=OFF ^
+        -DBUILD_opencv_viz=OFF -DBUILD_opencv_python3=OFF -DBUILD_opencv_python2=OFF ^
+        -DBUILD_opencv_java=OFF -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF ^
+        -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF -DBUILD_SHARED_LIBS=ON ^
+        -DBUILD_ZLIB=ON -DBUILD_PNG=ON -DBUILD_JPEG=ON -DBUILD_TIFF=ON ^
+        -DBUILD_WEBP=ON -DBUILD_OPENJPEG=ON -DBUILD_OPENEXR=ON ^
+        -DOPENCV_GENERATE_PKGCONFIG=OFF
+    - ninja
+    - ninja install
+  
+  create_pkgconfig_script:
+    - mkdir C:\opencv-minimal\lib\pkgconfig
+    - |
+      echo prefix=C:/opencv-minimal > C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo exec_prefix=${prefix} >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo libdir=${exec_prefix}/x64/mingw/bin >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo includedir=${prefix}/include >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo. >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo Name: OpenCV >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo Description: Open Source Computer Vision Library >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo Version: 4.10.0 >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo Libs: -L${libdir} -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_xfeatures2d4100 >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+      echo Cflags: -I${includedir} >> C:\opencv-minimal\lib\pkgconfig\opencv4.pc
+  
+  download_runtime_script:
+    - curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v%ONNX_VERSION%/onnxruntime-win-x64-%ONNX_VERSION%.zip" -o onnxruntime.zip
+    - tar -xf onnxruntime.zip
+    - ren onnxruntime-win-x64-%ONNX_VERSION% onnxruntime
+    - mkdir models
+    - git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models\go-ocr-models
+  
+  build_app_script:
+    - set PATH=C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;C:\Go\bin;%USERPROFILE%\go\bin;%PATH%
+    - set PKG_CONFIG_PATH=C:\opencv-minimal\lib\pkgconfig
+    - set CGO_CPPFLAGS=-IC:\opencv-minimal\include
+    - set CGO_LDFLAGS=-LC:\opencv-minimal\x64\mingw\bin
+    - mkdir dist
+    - go build -ldflags "-s -w" -o dist\zoeyworker.exe .\cmd\zoeyworker
+    - cd cmd\zoeyworker-gui
+    - wails build -ldflags "-s -w" -clean
+  
+  package_script:
+    - mkdir dist\ZoeyWorker-windows-amd64
+    - copy cmd\zoeyworker-gui\build\bin\ZoeyWorker.exe dist\ZoeyWorker-windows-amd64\
+    - copy dist\zoeyworker.exe dist\ZoeyWorker-windows-amd64\zoeyworker-cli.exe
+    - copy C:\opencv-minimal\x64\mingw\bin\*.dll dist\ZoeyWorker-windows-amd64\
+    - copy onnxruntime\lib\*.dll dist\ZoeyWorker-windows-amd64\
+    - copy C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\libgcc_s_seh-1.dll dist\ZoeyWorker-windows-amd64\
+    - copy C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\libstdc++-6.dll dist\ZoeyWorker-windows-amd64\
+    - copy C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\libwinpthread-1.dll dist\ZoeyWorker-windows-amd64\
+    - mkdir dist\ZoeyWorker-windows-amd64\models
+    - xcopy models\go-ocr-models\* dist\ZoeyWorker-windows-amd64\models\ /E /I /Y
+    - cd dist
+    - tar -acf ZoeyWorker-windows-amd64.zip ZoeyWorker-windows-amd64
+    - dir
+  
+  binaries_artifacts:
+    path: "dist/*.zip"
