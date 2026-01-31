@@ -2,15 +2,23 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"log"
+	"net/http"
 	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-//go:embed frontend/*
+//go:embed all:frontend/dist
 var assets embed.FS
+
+// getFileSystem 返回处理 index.html 的文件系统
+func getFileSystem() http.FileSystem {
+	fsys, _ := fs.Sub(assets, "frontend/dist")
+	return http.FS(fsys)
+}
 
 //go:embed build/appicon.png
 var appIcon []byte
@@ -36,7 +44,7 @@ func main() {
 			application.NewService(appService),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: http.FileServer(getFileSystem()),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
@@ -51,7 +59,7 @@ func main() {
 		MinWidth:         400,
 		MinHeight:        500,
 		BackgroundColour: application.NewRGB(255, 255, 255),
-		URL:              "/frontend/index.html",
+		URL:              "/",
 		Hidden:           false,
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: false,

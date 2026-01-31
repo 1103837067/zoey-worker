@@ -3,26 +3,63 @@
  */
 
 // ========== Wails v3 API ==========
-const wails = window.wails || { Call: () => Promise.reject('Wails not loaded') }
+// Wails v3 使用 wails.Call.ByName("ServiceName.MethodName", args...)
+function waitForWails() {
+  return new Promise((resolve) => {
+    const checkWails = () => {
+      if (window.wails && window.wails.Call && window.wails.Call.ByName) {
+        return window.wails.Call.ByName
+      }
+      return null
+    }
+    
+    const result = checkWails()
+    if (result) {
+      resolve(result)
+    } else {
+      const check = setInterval(() => {
+        const result = checkWails()
+        if (result) {
+          clearInterval(check)
+          resolve(result)
+        }
+      }, 100)
+      setTimeout(() => {
+        clearInterval(check)
+        console.error('Wails.Call.ByName not found')
+        resolve(null)
+      }, 5000)
+    }
+  })
+}
 
-// 封装后端调用
+let callByName = null
+
+async function callBackend(method, ...args) {
+  if (!callByName) callByName = await waitForWails()
+  if (!callByName) throw new Error('Wails not available')
+  return callByName(method, ...args)
+}
+
+// 封装后端调用 - Wails v3 格式: 包名.类型名.方法名
+const SERVICE = 'main.App'
 const App = {
-  LoadConfig: () => wails.Call('main.App.LoadConfig'),
-  SaveConfig: (config) => wails.Call('main.App.SaveConfig', config),
-  Connect: (url, accessKey, secretKey) => wails.Call('main.App.Connect', url, accessKey, secretKey),
-  Disconnect: () => wails.Call('main.App.Disconnect'),
-  GetStatus: () => wails.Call('main.App.GetStatus'),
-  GetLogs: (count) => wails.Call('main.App.GetLogs', count),
-  GetSystemInfo: () => wails.Call('main.App.GetSystemInfo'),
-  CheckPermissions: () => wails.Call('main.App.CheckPermissions'),
-  OpenAccessibilitySettings: () => wails.Call('main.App.OpenAccessibilitySettings'),
-  OpenScreenRecordingSettings: () => wails.Call('main.App.OpenScreenRecordingSettings'),
-  GetOCRPluginStatus: () => wails.Call('main.App.GetOCRPluginStatus'),
-  InstallOCRPlugin: () => wails.Call('main.App.InstallOCRPlugin'),
-  UninstallOCRPlugin: () => wails.Call('main.App.UninstallOCRPlugin'),
-  ShowWindow: () => wails.Call('main.App.ShowWindow'),
-  HideWindow: () => wails.Call('main.App.HideWindow'),
-  QuitApp: () => wails.Call('main.App.QuitApp'),
+  LoadConfig: () => callBackend(`${SERVICE}.LoadConfig`),
+  SaveConfig: (config) => callBackend(`${SERVICE}.SaveConfig`, config),
+  Connect: (url, accessKey, secretKey) => callBackend(`${SERVICE}.Connect`, url, accessKey, secretKey),
+  Disconnect: () => callBackend(`${SERVICE}.Disconnect`),
+  GetStatus: () => callBackend(`${SERVICE}.GetStatus`),
+  GetLogs: (count) => callBackend(`${SERVICE}.GetLogs`, count),
+  GetSystemInfo: () => callBackend(`${SERVICE}.GetSystemInfo`),
+  CheckPermissions: () => callBackend(`${SERVICE}.CheckPermissions`),
+  OpenAccessibilitySettings: () => callBackend(`${SERVICE}.OpenAccessibilitySettings`),
+  OpenScreenRecordingSettings: () => callBackend(`${SERVICE}.OpenScreenRecordingSettings`),
+  GetOCRPluginStatus: () => callBackend(`${SERVICE}.GetOCRPluginStatus`),
+  InstallOCRPlugin: () => callBackend(`${SERVICE}.InstallOCRPlugin`),
+  UninstallOCRPlugin: () => callBackend(`${SERVICE}.UninstallOCRPlugin`),
+  ShowWindow: () => callBackend(`${SERVICE}.ShowWindow`),
+  HideWindow: () => callBackend(`${SERVICE}.HideWindow`),
+  QuitApp: () => callBackend(`${SERVICE}.QuitApp`),
 }
 
 // ========== DOM 元素 ==========
@@ -37,9 +74,6 @@ const els = {
   connectBtn: $('connectBtn'),
   disconnectBtn: $('disconnectBtn'),
   errorMessage: $('errorMessage'),
-  connectionInfo: $('connectionInfo'),
-  agentIdDisplay: $('agentIdDisplay'),
-  agentNameDisplay: $('agentNameDisplay'),
   refreshLogsBtn: $('refreshLogsBtn'),
   emptyLogs: $('emptyLogs'),
   logList: $('logList'),
@@ -320,23 +354,17 @@ function updateUI() {
     els.secretKey.disabled = false
   }
 
-  // 连接信息（表单内）
-  if (state.connected) {
-    els.connectionInfo.classList.remove('hidden')
-    els.agentIdDisplay.textContent = state.agentId
-    els.agentNameDisplay.textContent = state.agentName
-  } else {
-    els.connectionInfo.classList.add('hidden')
-  }
-  
-  // Header 连接信息
+  // Header 连接信息（使用 flex 显示）
   if (state.connected && els.headerConnectionInfo) {
     els.headerConnectionInfo.classList.remove('hidden')
+    els.headerConnectionInfo.classList.add('flex')
     els.headerAgentName.textContent = state.agentName || '-'
+    els.headerAgentName.title = state.agentName || ''
     els.headerAgentId.textContent = state.agentId || '-'
     lucide.createIcons()
   } else if (els.headerConnectionInfo) {
     els.headerConnectionInfo.classList.add('hidden')
+    els.headerConnectionInfo.classList.remove('flex')
   }
 }
 

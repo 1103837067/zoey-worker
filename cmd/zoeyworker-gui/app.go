@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
@@ -30,7 +31,7 @@ func NewApp() *App {
 }
 
 // ServiceStartup Wails v3 服务启动时调用
-func (a *App) ServiceStartup(ctx context.Context, options ...interface{}) error {
+func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	a.ctx = ctx
 	a.grpcClient = grpc.NewClient(nil)
 	a.executor = executor.NewExecutor(a.grpcClient)
