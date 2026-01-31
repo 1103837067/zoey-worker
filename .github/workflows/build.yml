@@ -82,18 +82,16 @@ jobs:
           
           # 手动创建 pkgconfig 文件（避免 CMake 脚本兼容问题）
           mkdir -p $HOME/opencv-minimal/lib/pkgconfig
-          cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'EOF'
-prefix=${pcfiledir}/../..
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include/opencv4
-
-Name: OpenCV
-Description: Open Source Computer Vision Library
-Version: 4.10.0
-Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
-Cflags: -I${includedir}
-EOF
+          echo 'prefix=${pcfiledir}/../..' > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'exec_prefix=${prefix}' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'libdir=${exec_prefix}/lib' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'includedir=${prefix}/include/opencv4' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo '' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'Name: OpenCV' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'Description: Open Source Computer Vision Library' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'Version: 4.10.0' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
+          echo 'Cflags: -I${includedir}' >> $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc
           
           echo "=== OpenCV build complete ==="
           ls -la $HOME/opencv-minimal/lib/
@@ -324,18 +322,16 @@ EOF
           
           # 手动创建 pkgconfig 文件
           mkdir -p /mingw64/lib/pkgconfig
-          cat > /mingw64/lib/pkgconfig/opencv4.pc << 'EOF'
-prefix=/mingw64
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include/opencv4
-
-Name: OpenCV
-Description: Open Source Computer Vision Library
-Version: 4.10.0
-Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
-Cflags: -I${includedir}
-EOF
+          echo 'prefix=/mingw64' > /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'exec_prefix=${prefix}' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'libdir=${exec_prefix}/lib' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'includedir=${prefix}/include/opencv4' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo '' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'Name: OpenCV' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'Description: Open Source Computer Vision Library' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'Version: 4.10.0' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d' >> /mingw64/lib/pkgconfig/opencv4.pc
+          echo 'Cflags: -I${includedir}' >> /mingw64/lib/pkgconfig/opencv4.pc
           
           echo "=== OpenCV build complete ==="
           ls -la /mingw64/bin/libopencv*.dll || echo "No OpenCV DLLs found in /mingw64/bin"
