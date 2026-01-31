@@ -81,9 +81,18 @@ jobs:
           mkdir -p "${FRAMEWORKS_DIR}"
           mkdir -p "${RESOURCES_DIR}/models"
           
-          echo "=== Copying ONNX Runtime (only versioned dylib) ==="
-          # 只复制带版本号的 dylib，不复制符号链接（避免重复）
+          echo "=== Copying ONNX Runtime ==="
+          # 复制带版本号的 dylib
           cp onnxruntime/lib/libonnxruntime.*.dylib "${FRAMEWORKS_DIR}/" 2>/dev/null || true
+          # 创建不带版本号的符号链接（代码查找的是 libonnxruntime.dylib）
+          cd "${FRAMEWORKS_DIR}"
+          for f in libonnxruntime.*.dylib; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+              ln -sf "$f" libonnxruntime.dylib
+              break
+            fi
+          done
+          cd - > /dev/null
           
           echo "=== Copying OpenCV dylibs (only libopencv_*, exclude OrbbecSDK) ==="
           for dylib in ${OPENCV_PREFIX}/lib/libopencv_*.dylib; do
@@ -304,9 +313,15 @@ jobs:
             [ $changed -eq 0 ] && break
           done
           
-          echo "=== Copying OCR models ==="
+          echo "=== Copying OCR models (exclude lib folder) ==="
           mkdir -p dist/models
-          cp -r models/* dist/models/ 2>/dev/null || true
+          for item in models/*; do
+            itemname=$(basename "$item")
+            # 跳过 lib 目录（ONNX Runtime 已经在 exe 同目录）
+            if [ "$itemname" != "lib" ]; then
+              cp -r "$item" dist/models/
+            fi
+          done
           
           echo "=== Final package info ==="
           echo "EXE files:"
