@@ -227,3 +227,12 @@ func (r OCRResult) ToOcrResult() OcrResult {
 		},
 	}
 }
+
+// IsAvailable 检查 OCR 功能是否可用（模型文件是否存在）
+func IsAvailable() bool {
+	config := DefaultConfig()
+	return fileExists(config.OnnxRuntimeLibPath) &&
+		fileExists(config.DetModelPath) &&
+		fileExists(config.RecModelPath) &&
+		fileExists(config.DictPath)
+}

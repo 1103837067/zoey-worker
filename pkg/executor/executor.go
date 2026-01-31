@@ -14,6 +14,7 @@ import (
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
 	"github.com/zoeyai/zoeyworker/pkg/plugin"
 	"github.com/zoeyai/zoeyworker/pkg/uia"
+	"github.com/zoeyai/zoeyworker/pkg/vision/ocr"
 )
 
 // TaskType 任务类型
@@ -483,10 +484,20 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 	return map[string]bool{"clicked": true}, nil
 }
 
+// isOCRAvailable 检查 OCR 功能是否可用（插件安装或默认配置可用）
+func isOCRAvailable() bool {
+	// 先检查插件是否已安装
+	if plugin.GetOCRPlugin().IsInstalled() {
+		return true
+	}
+	// 再检查默认配置（打包的模型文件）是否可用
+	return ocr.IsAvailable()
+}
+
 // executeClickText 执行点击文字
 func (e *Executor) executeClickText(payload map[string]interface{}) (interface{}, error) {
-	// 检查 OCR 插件是否已安装
-	if !plugin.GetOCRPlugin().IsInstalled() {
+	// 检查 OCR 是否可用（插件或默认配置）
+	if !isOCRAvailable() {
 		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
 	}
 
@@ -617,8 +628,8 @@ func (e *Executor) executeWaitImage(payload map[string]interface{}) (interface{}
 
 // executeWaitText 执行等待文字
 func (e *Executor) executeWaitText(payload map[string]interface{}) (interface{}, error) {
-	// 检查 OCR 插件是否已安装
-	if !plugin.GetOCRPlugin().IsInstalled() {
+	// 检查 OCR 是否可用（插件或默认配置）
+	if !isOCRAvailable() {
 		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
 	}
 
@@ -1442,7 +1453,8 @@ func (e *Executor) executeClickImageV2(payload map[string]interface{}, result *A
 
 // executeClickTextV2 执行点击文字（增强版，记录位置信息）
 func (e *Executor) executeClickTextV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
-	if !plugin.GetOCRPlugin().IsInstalled() {
+	// 检查 OCR 是否可用（插件或默认配置）
+	if !isOCRAvailable() {
 		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
 	}
 
