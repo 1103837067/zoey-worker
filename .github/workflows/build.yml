@@ -41,12 +41,23 @@ jobs:
           curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-osx-arm64-${ONNX_VERSION}.tgz" | tar xz
           mv onnxruntime-osx-arm64-${ONNX_VERSION} onnxruntime
           
+          echo "=== Downloading OCR Models (with Git LFS) ==="
           mkdir -p models
-          git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
+          # 安装 git-lfs 并拉取实际文件
+          brew install git-lfs || true
+          git lfs install
+          git clone https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
           if [ -d "models/go-ocr-models" ]; then
+            cd models/go-ocr-models
+            git lfs pull
+            cd ../..
             mv models/go-ocr-models/* models/
             rm -rf models/go-ocr-models
           fi
+          
+          echo "=== Verifying ONNX model sizes ==="
+          ls -la models/paddle_weights/ || true
+          ls -la models/ddddocr_weights/ || true
 
       - name: Build CLI
         run: |
@@ -193,6 +204,7 @@ jobs:
             unzip
             wget
             git
+            git-lfs
 
       - name: Download Pre-built OpenCV
         shell: msys2 {0}
@@ -214,9 +226,15 @@ jobs:
           unzip -q onnxruntime.zip
           mv onnxruntime-win-x64-${ONNX_VERSION} onnxruntime
           
+          echo "=== Downloading OCR Models (with Git LFS) ==="
           mkdir -p models
-          git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
+          # 安装 git-lfs 并拉取实际文件
+          git lfs install
+          git clone https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
           if [ -d "models/go-ocr-models" ]; then
+            cd models/go-ocr-models
+            git lfs pull
+            cd ../..
             mv models/go-ocr-models/* models/
             rm -rf models/go-ocr-models
           fi
@@ -224,6 +242,9 @@ jobs:
           echo "Dependencies downloaded:"
           ls -la onnxruntime/lib/
           ls -la models/
+          echo "=== Verifying ONNX model sizes ==="
+          ls -la models/paddle_weights/ || true
+          ls -la models/ddddocr_weights/ || true
 
       - name: Build
         shell: msys2 {0}
