@@ -181,6 +181,11 @@ import (
 	"unsafe"
 )
 
+// getWindowsPlatform macOS 平台实现
+func getWindowsPlatform(filter ...string) ([]WindowInfo, error) {
+	return getWindowsDarwin(filter...)
+}
+
 // getWindowsDarwin 使用 macOS 原生 API 获取窗口列表
 // 不会触发辅助功能权限弹窗
 // 注意：浏览器的标签页不是独立窗口，每个浏览器窗口只会显示一次

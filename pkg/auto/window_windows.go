@@ -10,37 +10,40 @@ import (
 )
 
 var (
-	user32                     = syscall.NewLazyDLL("user32.dll")
-	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
-	psapi                      = syscall.NewLazyDLL("psapi.dll")
-	procEnumWindows            = user32.NewProc("EnumWindows")
-	procGetWindowTextW         = user32.NewProc("GetWindowTextW")
-	procGetWindowTextLengthW   = user32.NewProc("GetWindowTextLengthW")
+	user32                       = syscall.NewLazyDLL("user32.dll")
+	kernel32                     = syscall.NewLazyDLL("kernel32.dll")
+	psapi                        = syscall.NewLazyDLL("psapi.dll")
+	procEnumWindows              = user32.NewProc("EnumWindows")
+	procGetWindowTextW           = user32.NewProc("GetWindowTextW")
+	procGetWindowTextLengthW     = user32.NewProc("GetWindowTextLengthW")
 	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
-	procGetWindowRect          = user32.NewProc("GetWindowRect")
-	procIsWindowVisible        = user32.NewProc("IsWindowVisible")
-	procGetWindowLongW         = user32.NewProc("GetWindowLongW")
-	procOpenProcess            = kernel32.NewProc("OpenProcess")
-	procCloseHandle            = kernel32.NewProc("CloseHandle")
-	procGetModuleBaseNameW     = psapi.NewProc("GetModuleBaseNameW")
-	procSetForegroundWindow    = user32.NewProc("SetForegroundWindow")
-	procShowWindow             = user32.NewProc("ShowWindow")
-	procBringWindowToTop       = user32.NewProc("BringWindowToTop")
-	procGetForegroundWindow    = user32.NewProc("GetForegroundWindow")
-	procAttachThreadInput      = user32.NewProc("AttachThreadInput")
-	procGetCurrentThreadId     = kernel32.NewProc("GetCurrentThreadId")
+	procGetWindowRect            = user32.NewProc("GetWindowRect")
+	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
+	procGetWindowLongW           = user32.NewProc("GetWindowLongW")
+	procOpenProcess              = kernel32.NewProc("OpenProcess")
+	procCloseHandle              = kernel32.NewProc("CloseHandle")
+	procGetModuleBaseNameW       = psapi.NewProc("GetModuleBaseNameW")
+	procSetForegroundWindow      = user32.NewProc("SetForegroundWindow")
+	procShowWindow               = user32.NewProc("ShowWindow")
+	procBringWindowToTop         = user32.NewProc("BringWindowToTop")
+	procGetForegroundWindow      = user32.NewProc("GetForegroundWindow")
+	procAttachThreadInput        = user32.NewProc("AttachThreadInput")
+	procGetCurrentThreadId       = kernel32.NewProc("GetCurrentThreadId")
 )
 
 const (
-	GWL_STYLE           = -16
-	GWL_EXSTYLE         = -20
-	WS_VISIBLE          = 0x10000000
-	WS_EX_TOOLWINDOW    = 0x00000080
-	WS_EX_APPWINDOW     = 0x00040000
+	// 使用 int32 转换避免溢出
+	gwlStyle   int32 = -16
+	gwlExStyle int32 = -20
+
+	WS_VISIBLE       uintptr = 0x10000000
+	WS_EX_TOOLWINDOW uintptr = 0x00000080
+	WS_EX_APPWINDOW  uintptr = 0x00040000
+
 	PROCESS_QUERY_INFORMATION = 0x0400
-	PROCESS_VM_READ     = 0x0010
-	SW_RESTORE          = 9
-	SW_SHOW             = 5
+	PROCESS_VM_READ           = 0x0010
+	SW_RESTORE                = 9
+	SW_SHOW                   = 5
 )
 
 // RECT Windows 矩形结构
@@ -52,6 +55,11 @@ type RECT struct {
 type windowEnumData struct {
 	windows []WindowInfo
 	filter  string
+}
+
+// getWindowsPlatform Windows 平台实现
+func getWindowsPlatform(filter ...string) ([]WindowInfo, error) {
+	return getWindowsWindows(filter...)
 }
 
 // getWindowsWindows 使用 Windows 原生 API 获取窗口列表
@@ -86,8 +94,9 @@ func enumWindowsCallback(hwnd syscall.Handle, lParam uintptr) {
 	}
 
 	// 获取窗口样式，过滤工具窗口等
-	style, _, _ := procGetWindowLongW.Call(uintptr(hwnd), uintptr(uint32(GWL_STYLE)))
-	exStyle, _, _ := procGetWindowLongW.Call(uintptr(hwnd), uintptr(uint32(GWL_EXSTYLE)))
+	// 使用 uintptr 转换 int32 常量
+	style, _, _ := procGetWindowLongW.Call(uintptr(hwnd), uintptr(gwlStyle))
+	exStyle, _, _ := procGetWindowLongW.Call(uintptr(hwnd), uintptr(gwlExStyle))
 
 	// 跳过不可见窗口
 	if style&WS_VISIBLE == 0 {
@@ -108,7 +117,7 @@ func enumWindowsCallback(hwnd syscall.Handle, lParam uintptr) {
 	// 获取窗口标题 (UTF-16)
 	buf := make([]uint16, length+1)
 	procGetWindowTextW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(length+1))
-	
+
 	// UTF-16 转 UTF-8
 	title := syscall.UTF16ToString(buf)
 	if title == "" {
@@ -187,12 +196,12 @@ func getProcessName(pid uint32) string {
 
 	// UTF-16 转 UTF-8
 	name := syscall.UTF16ToString(buf)
-	
+
 	// 去掉 .exe 后缀
 	if strings.HasSuffix(strings.ToLower(name), ".exe") {
 		name = name[:len(name)-4]
 	}
-	
+
 	return name
 }
 
@@ -308,7 +317,7 @@ func activateWindowByTitleInternal(title string) error {
 func activateWindowByHandle(hwnd syscall.Handle) error {
 	// 获取当前前台窗口的线程 ID
 	foregroundHwnd, _, _ := procGetForegroundWindow.Call()
-	var foregroundThreadId uint32
+	var foregroundThreadId uintptr
 	if foregroundHwnd != 0 {
 		foregroundThreadId, _, _ = procGetWindowThreadProcessId.Call(foregroundHwnd, 0)
 	}
@@ -320,14 +329,14 @@ func activateWindowByHandle(hwnd syscall.Handle) error {
 	targetThreadId, _, _ := procGetWindowThreadProcessId.Call(uintptr(hwnd), 0)
 
 	// 附加输入线程以允许 SetForegroundWindow
-	if foregroundThreadId != 0 && foregroundThreadId != uint32(currentThreadId) {
-		procAttachThreadInput.Call(uintptr(currentThreadId), uintptr(foregroundThreadId), 1)
-		defer procAttachThreadInput.Call(uintptr(currentThreadId), uintptr(foregroundThreadId), 0)
+	if foregroundThreadId != 0 && foregroundThreadId != currentThreadId {
+		procAttachThreadInput.Call(currentThreadId, foregroundThreadId, 1)
+		defer procAttachThreadInput.Call(currentThreadId, foregroundThreadId, 0)
 	}
 
-	if targetThreadId != 0 && uint32(targetThreadId) != uint32(currentThreadId) {
-		procAttachThreadInput.Call(uintptr(currentThreadId), targetThreadId, 1)
-		defer procAttachThreadInput.Call(uintptr(currentThreadId), targetThreadId, 0)
+	if targetThreadId != 0 && targetThreadId != currentThreadId {
+		procAttachThreadInput.Call(currentThreadId, targetThreadId, 1)
+		defer procAttachThreadInput.Call(currentThreadId, targetThreadId, 0)
 	}
 
 	// 恢复窗口（如果最小化）

@@ -10,8 +10,8 @@ import (
 	"github.com/go-vgo/robotgo"
 )
 
-// getWindowsDarwin 非 macOS 系统使用 robotgo
-func getWindowsDarwin(filter ...string) ([]WindowInfo, error) {
+// getWindowsPlatform Linux 等其他平台实现
+func getWindowsPlatform(filter ...string) ([]WindowInfo, error) {
 	return getWindowsRobotgo(filter...)
 }
 
