@@ -10,6 +10,9 @@ env:
   ONNX_VERSION: '1.19.2'
   OPENCV_VERSION: '4.10.0'
 
+permissions:
+  contents: write
+
 jobs:
   build-macos:
     runs-on: macos-latest
@@ -20,89 +23,19 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
-      - name: Cache OpenCV
-        id: cache-opencv
-        uses: actions/cache@v4
-        with:
-          path: ~/opencv-minimal
-          key: opencv-${{ env.OPENCV_VERSION }}-macos-minimal-v3
-
       - name: Install Build Dependencies
         run: |
-          brew install cmake ninja pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
+          brew install pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build OpenCV from source (minimal)
-        if: steps.cache-opencv.outputs.cache-hit != 'true'
+      - name: Download Pre-built OpenCV
         run: |
-          echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
-          curl -sL "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
-          
-          echo "=== Building OpenCV (gocv required modules only) ==="
-          mkdir -p opencv-${OPENCV_VERSION}/build
-          cd opencv-${OPENCV_VERSION}/build
-          
-          # gocv 核心依赖模块（不需要 contrib）:
-          # core, imgproc, imgcodecs, features2d, flann, calib3d, 
-          # objdetect, dnn, video, photo, highgui, videoio
-          cmake .. -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
-            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,objdetect,dnn,video,photo,highgui,videoio \
-            -DWITH_QT=OFF \
-            -DWITH_GTK=OFF \
-            -DWITH_FFMPEG=OFF \
-            -DWITH_GSTREAMER=OFF \
-            -DWITH_AVFOUNDATION=OFF \
-            -DWITH_V4L=OFF \
-            -DWITH_DSHOW=OFF \
-            -DWITH_MSMF=OFF \
-            -DWITH_VTK=OFF \
-            -DWITH_OPENGL=OFF \
-            -DWITH_OPENCL=OFF \
-            -DWITH_IPP=OFF \
-            -DWITH_TBB=OFF \
-            -DWITH_LAPACK=OFF \
-            -DBUILD_opencv_apps=OFF \
-            -DBUILD_opencv_viz=OFF \
-            -DBUILD_opencv_python3=OFF \
-            -DBUILD_opencv_python2=OFF \
-            -DBUILD_opencv_java=OFF \
-            -DBUILD_TESTS=OFF \
-            -DBUILD_PERF_TESTS=OFF \
-            -DBUILD_EXAMPLES=OFF \
-            -DBUILD_DOCS=OFF \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_ZLIB=OFF \
-            -DBUILD_PNG=OFF \
-            -DBUILD_JPEG=OFF \
-            -DBUILD_TIFF=OFF \
-            -DBUILD_WEBP=OFF \
-            -DBUILD_OPENJPEG=OFF \
-            -DBUILD_OPENEXR=OFF \
-            -DOPENCV_GENERATE_PKGCONFIG=OFF
-          
-          ninja -j$(sysctl -n hw.ncpu)
-          ninja install
-          
-          # 手动创建 pkgconfig 文件
-          mkdir -p $HOME/opencv-minimal/lib/pkgconfig
-          cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'PKGEOF'
-          prefix=${pcfiledir}/../..
-          exec_prefix=${prefix}
-          libdir=${exec_prefix}/lib
-          includedir=${prefix}/include/opencv4
-          
-          Name: OpenCV
-          Description: Open Source Computer Vision Library
-          Version: 4.10.0
-          Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio
-          Cflags: -I${includedir}
-          PKGEOF
-          
-          echo "=== OpenCV build complete ==="
+          echo "=== Downloading pre-built OpenCV ${OPENCV_VERSION} ==="
+          mkdir -p $HOME/opencv-minimal
+          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-macos-arm64.tar.gz" | tar xz -C $HOME/opencv-minimal
+          echo "=== OpenCV downloaded ==="
           ls -la $HOME/opencv-minimal/lib/
-          
+
       - name: Download ONNX Runtime & OCR Models
         run: |
           curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-osx-arm64-${ONNX_VERSION}.tgz" | tar xz
@@ -131,7 +64,6 @@ jobs:
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio -Wl,-rpath,@executable_path/../Frameworks"
-          # DYLD_LIBRARY_PATH 让 wails bindings 生成时能找到 OpenCV 动态库
           export DYLD_LIBRARY_PATH="$HOME/opencv-minimal/lib:$DYLD_LIBRARY_PATH"
           
           cd cmd/zoeyworker-gui
@@ -183,7 +115,6 @@ jobs:
           done
           
           echo "=== Fixing library paths ==="
-          # 修复可执行文件
           for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
             libname=$(basename "$dep")
             if [ -f "${FRAMEWORKS_DIR}/${libname}" ]; then
@@ -191,7 +122,6 @@ jobs:
             fi
           done
           
-          # 修复所有 dylib
           for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
             [ ! -f "$dylib" ] && continue
             libname=$(basename "$dylib")
@@ -220,7 +150,6 @@ jobs:
           echo "Frameworks:"
           ls -la ZoeyWorker.app/Contents/Frameworks/
           
-          # 验证没有外部依赖
           echo "=== Verifying dependencies ==="
           otool -L ZoeyWorker.app/Contents/MacOS/ZoeyWorker | grep -E "/opt/homebrew|/usr/local" && echo "WARNING: External deps found!" || echo "OK: Self-contained"
           
@@ -261,97 +190,21 @@ jobs:
           update: false
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
             mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-libjpeg-turbo
-            mingw-w64-x86_64-libpng
-            mingw-w64-x86_64-libtiff
-            mingw-w64-x86_64-libwebp
-            mingw-w64-x86_64-openjpeg2
-            mingw-w64-x86_64-zlib
             zip
             unzip
             wget
             git
 
-      - name: Cache OpenCV
-        id: cache-opencv-win
-        uses: actions/cache@v4
-        with:
-          path: C:/opencv-minimal
-          key: opencv-${{ env.OPENCV_VERSION }}-windows-minimal-v4
-
-      - name: Build OpenCV from source (minimal)
-        if: steps.cache-opencv-win.outputs.cache-hit != 'true'
+      - name: Download Pre-built OpenCV
         shell: msys2 {0}
         run: |
-          echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
-          wget -q "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv.tar.gz
-          tar xzf opencv.tar.gz
-          
-          echo "=== Building OpenCV (gocv required modules only) ==="
-          mkdir -p opencv-${OPENCV_VERSION}/build
-          cd opencv-${OPENCV_VERSION}/build
-          
-          cmake .. -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/c/opencv-minimal \
-            -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,objdetect,dnn,video,photo,highgui,videoio \
-            -DWITH_QT=OFF \
-            -DWITH_GTK=OFF \
-            -DWITH_FFMPEG=OFF \
-            -DWITH_GSTREAMER=OFF \
-            -DWITH_V4L=OFF \
-            -DWITH_DSHOW=OFF \
-            -DWITH_MSMF=OFF \
-            -DWITH_VTK=OFF \
-            -DWITH_OPENGL=OFF \
-            -DWITH_OPENCL=OFF \
-            -DWITH_CUDA=OFF \
-            -DWITH_IPP=OFF \
-            -DWITH_TBB=OFF \
-            -DWITH_LAPACK=OFF \
-            -DBUILD_opencv_apps=OFF \
-            -DBUILD_opencv_viz=OFF \
-            -DBUILD_opencv_python3=OFF \
-            -DBUILD_opencv_python2=OFF \
-            -DBUILD_opencv_java=OFF \
-            -DBUILD_TESTS=OFF \
-            -DBUILD_PERF_TESTS=OFF \
-            -DBUILD_EXAMPLES=OFF \
-            -DBUILD_DOCS=OFF \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_ZLIB=ON \
-            -DBUILD_PNG=ON \
-            -DBUILD_JPEG=ON \
-            -DBUILD_TIFF=OFF \
-            -DBUILD_WEBP=OFF \
-            -DBUILD_OPENJPEG=OFF \
-            -DBUILD_OPENEXR=OFF \
-            -DOPENCV_GENERATE_PKGCONFIG=OFF
-          
-          ninja -j$(nproc)
-          ninja install
-          
-          # 手动创建 pkgconfig 文件
-          mkdir -p /c/opencv-minimal/lib/pkgconfig
-          cat > /c/opencv-minimal/lib/pkgconfig/opencv4.pc << 'PKGEOF'
-          prefix=/c/opencv-minimal
-          exec_prefix=${prefix}
-          libdir=${exec_prefix}/lib
-          includedir=${prefix}/include/opencv4
-          
-          Name: OpenCV
-          Description: Open Source Computer Vision Library
-          Version: 4.10.0
-          Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio
-          Cflags: -I${includedir}
-          PKGEOF
-          
-          echo "=== OpenCV build complete ==="
-          ls -la /c/opencv-minimal/bin/libopencv*.dll || echo "No OpenCV DLLs found"
-          ls -la /c/opencv-minimal/lib/libopencv*.dll.a || echo "No OpenCV import libs found"
+          echo "=== Downloading pre-built OpenCV ${OPENCV_VERSION} ==="
+          mkdir -p /c/opencv-minimal
+          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
+          unzip -q opencv.zip -d /c/opencv-minimal
+          echo "=== OpenCV downloaded ==="
+          ls -la /c/opencv-minimal/
 
       - name: Download ONNX Runtime & OCR Models
         shell: msys2 {0}
@@ -409,7 +262,6 @@ jobs:
           
           echo "=== Collecting dependencies ==="
           
-          # 递归复制 DLL 依赖
           copy_deps() {
             local file="$1"
             [ ! -f "$file" ] && return
@@ -438,16 +290,6 @@ jobs:
           echo "=== Copying runtime libraries ==="
           for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll libgomp-1.dll; do
             [ -f "/mingw64/bin/$dll" ] && [ ! -f "dist/$dll" ] && cp "/mingw64/bin/$dll" dist/
-          done
-          
-          echo "=== Copying image codecs ==="
-          for pattern in "libjpeg*.dll" "libpng*.dll" "libtiff*.dll" "libwebp*.dll" \
-                         "zlib*.dll" "liblzma*.dll" "libzstd*.dll" "libbz2*.dll" \
-                         "libdeflate*.dll" "libjbig*.dll" "libLerc*.dll" \
-                         "libsharpyuv*.dll" "libopenjp2*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
           done
           
           echo "=== Multi-round dependency check ==="

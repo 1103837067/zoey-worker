@@ -1,8 +1,12 @@
 package auto
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"image"
+	"image/jpeg"
+	"image/png"
 	"time"
 
 	"github.com/go-vgo/robotgo"
@@ -44,6 +48,58 @@ func GetScreenSize() (width, height int) {
 // GetDisplayCount 获取显示器数量
 func GetDisplayCount() int {
 	return robotgo.DisplaysNum()
+}
+
+// ImageToBase64 将图像转换为 Base64 字符串
+// format: "png" 或 "jpeg"，默认 "jpeg"（更小的体积）
+// quality: JPEG 质量 1-100，默认 80
+func ImageToBase64(img image.Image, format string, quality int) (string, error) {
+	if img == nil {
+		return "", fmt.Errorf("图像为空")
+	}
+
+	var buf bytes.Buffer
+	var mimeType string
+
+	if format == "" {
+		format = "jpeg" // 默认使用 JPEG 以减小体积
+	}
+	if quality <= 0 || quality > 100 {
+		quality = 80 // 默认质量
+	}
+
+	switch format {
+	case "png":
+		err := png.Encode(&buf, img)
+		if err != nil {
+			return "", fmt.Errorf("PNG 编码失败: %w", err)
+		}
+		mimeType = "image/png"
+	case "jpeg", "jpg":
+		err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality})
+		if err != nil {
+			return "", fmt.Errorf("JPEG 编码失败: %w", err)
+		}
+		mimeType = "image/jpeg"
+	default:
+		return "", fmt.Errorf("不支持的图像格式: %s", format)
+	}
+
+	// 编码为 Base64
+	base64Str := base64.StdEncoding.EncodeToString(buf.Bytes())
+	
+	// 返回带 Data URI 前缀的字符串
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str), nil
+}
+
+// CaptureScreenToBase64 截取屏幕并转换为 Base64
+// 返回 JPEG 格式的 Base64 字符串（更小的体积）
+func CaptureScreenToBase64(quality int, displayID ...int) (string, error) {
+	img, err := CaptureScreen(displayID...)
+	if err != nil {
+		return "", err
+	}
+	return ImageToBase64(img, "jpeg", quality)
 }
 
 // ==================== 图像操作 ====================

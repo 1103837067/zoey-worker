@@ -96,6 +96,125 @@ func classifyError(err error) *TaskError {
 	return newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, reason, errStr)
 }
 
+// StepExecutionResult 步骤执行结果（用于前端回放）
+type StepExecutionResult struct {
+	StepExecutionID string `json:"stepExecutionId,omitempty"` // 步骤执行记录 ID
+	StepID          string `json:"stepId"`                    // 步骤 ID
+	Status          string `json:"status"`                    // SUCCESS, FAILED, SKIPPED
+	
+	// 截图（Base64 格式）
+	ScreenshotBefore string `json:"screenshotBefore,omitempty"` // 执行前截图
+	ScreenshotAfter  string `json:"screenshotAfter,omitempty"`  // 执行后截图
+	
+	// 操作信息
+	ActionType string `json:"actionType"` // click, long_press, double_click, input, swipe, assert, wait
+	
+	// 目标元素边框（用于回放时高亮显示）
+	TargetBounds *BoundsInfo `json:"targetBounds,omitempty"`
+	
+	// 实际点击位置（用于回放时显示点击动画）
+	ClickPosition *PositionInfo `json:"clickPosition,omitempty"`
+	
+	// 滑动轨迹（仅 swipe 操作）
+	SwipePath *SwipePathInfo `json:"swipePath,omitempty"`
+	
+	// 输入内容（仅 input 操作）
+	InputText string `json:"inputText,omitempty"`
+	
+	// 执行耗时（毫秒）
+	DurationMs int64 `json:"durationMs"`
+	
+	// 错误信息（仅失败时）
+	ErrorMessage  string `json:"errorMessage,omitempty"`
+	FailureReason string `json:"failureReason,omitempty"` // NOT_FOUND, MULTIPLE_MATCHES, ASSERTION_FAILED, PARAM_ERROR, SYSTEM_ERROR
+}
+
+// BoundsInfo 边界信息
+type BoundsInfo struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// PositionInfo 位置信息
+type PositionInfo struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// SwipePathInfo 滑动轨迹信息
+type SwipePathInfo struct {
+	StartX int `json:"startX"`
+	StartY int `json:"startY"`
+	EndX   int `json:"endX"`
+	EndY   int `json:"endY"`
+}
+
+// ActionResult 操作执行结果（各执行函数返回）
+type ActionResult struct {
+	Success       bool          // 是否成功
+	Error         error         // 错误信息
+	Data          interface{}   // 原始返回数据
+	ClickPosition *PositionInfo // 点击位置
+	TargetBounds  *BoundsInfo   // 目标边界
+	InputText     string        // 输入的文本
+}
+
+// mapTaskTypeToActionType 将任务类型映射为操作类型
+func mapTaskTypeToActionType(taskType string) string {
+	switch taskType {
+	case TaskTypeClickImage, TaskTypeClickText, TaskTypeClickNative, TaskTypeMouseClick, TaskTypeGridClick:
+		return "click"
+	case TaskTypeTypeText:
+		return "input"
+	case TaskTypeKeyPress:
+		return "input"
+	case TaskTypeWaitImage, TaskTypeWaitText, TaskTypeWaitTime:
+		return "wait"
+	case TaskTypeAssertImage, TaskTypeAssertText, TaskTypeImageExists, TaskTypeTextExists:
+		return "assert"
+	default:
+		return "other"
+	}
+}
+
+// mapFailureReasonToString 将失败原因枚举映射为字符串
+func mapFailureReasonToString(reason pb.FailureReason) string {
+	switch reason {
+	case pb.FailureReason_FAILURE_REASON_NOT_FOUND:
+		return "NOT_FOUND"
+	case pb.FailureReason_FAILURE_REASON_MULTIPLE_MATCHES:
+		return "MULTIPLE_MATCHES"
+	case pb.FailureReason_FAILURE_REASON_ASSERTION_FAILED:
+		return "ASSERTION_FAILED"
+	case pb.FailureReason_FAILURE_REASON_PARAM_ERROR:
+		return "PARAM_ERROR"
+	case pb.FailureReason_FAILURE_REASON_SYSTEM_ERROR:
+		return "SYSTEM_ERROR"
+	default:
+		return ""
+	}
+}
+
+// mapTaskStatusToString 将任务状态枚举映射为字符串
+func mapTaskStatusToString(status pb.TaskStatus) string {
+	switch status {
+	case pb.TaskStatus_TASK_STATUS_SUCCESS:
+		return "SUCCESS"
+	case pb.TaskStatus_TASK_STATUS_FAILED:
+		return "FAILED"
+	case pb.TaskStatus_TASK_STATUS_SKIPPED:
+		return "SKIPPED"
+	case pb.TaskStatus_TASK_STATUS_CANCELLED:
+		return "CANCELLED"
+	case pb.TaskStatus_TASK_STATUS_TIMEOUT:
+		return "FAILED" // 超时也算失败
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // LogFunc 日志函数类型
 type LogFunc func(level, message string)
 
@@ -791,9 +910,20 @@ func (e *Executor) executeDebugCase(taskID string, payload map[string]interface{
 	}
 
 	stopOnFail, _ := payload["stop_on_fail"].(bool)
+	// 是否启用截图（默认启用，可通过 capture_screenshots: false 禁用）
+	captureScreenshots := true
+	if cs, ok := payload["capture_screenshots"].(bool); ok {
+		captureScreenshots = cs
+	}
+	// 截图质量（JPEG 质量 1-100，默认 60 以减小传输量）
+	screenshotQuality := 60
+	if sq, ok := payload["screenshot_quality"].(float64); ok && sq > 0 && sq <= 100 {
+		screenshotQuality = int(sq)
+	}
+
 	totalSteps := len(stepsRaw)
 
-	log("INFO", fmt.Sprintf("[Task:%s] debug_case 开始，共 %d 个步骤", taskID, totalSteps))
+	log("INFO", fmt.Sprintf("[Task:%s] debug_case 开始，共 %d 个步骤, 截图=%v, 质量=%d", taskID, totalSteps, captureScreenshots, screenshotQuality))
 
 	var completedSteps, passedSteps, failedSteps int32
 
@@ -805,6 +935,7 @@ func (e *Executor) executeDebugCase(taskID string, payload map[string]interface{
 		}
 
 		stepID, _ := stepMap["step_id"].(string)
+		stepExecutionID, _ := stepMap["step_execution_id"].(string) // 步骤执行记录 ID（后端创建后传入）
 		stepTaskType, _ := stepMap["task_type"].(string)
 		stepParams, _ := stepMap["params"].(map[string]interface{})
 
@@ -816,19 +947,57 @@ func (e *Executor) executeDebugCase(taskID string, payload map[string]interface{
 		// 发送步骤进度
 		e.sendTaskProgress(taskID, int32(totalSteps), completedSteps, passedSteps, failedSteps, stepTaskType, "RUNNING")
 
-		// 执行单个步骤
+		// 1. 执行前截图
+		var screenshotBefore string
+		if captureScreenshots {
+			if sb, err := auto.CaptureScreenToBase64(screenshotQuality); err == nil {
+				screenshotBefore = sb
+			} else {
+				log("WARN", fmt.Sprintf("[Task:%s] 执行前截图失败: %s", taskID, err.Error()))
+			}
+		}
+
+		// 2. 执行单个步骤（增强版，返回更多信息）
 		stepStartTime := time.Now()
-		stepResult, stepErr := e.executeSingleStep(stepTaskType, stepParams)
+		actionResult := e.executeSingleStepV2(stepTaskType, stepParams)
+		durationMs := time.Since(stepStartTime).Milliseconds()
+
+		// 3. 执行后截图
+		var screenshotAfter string
+		if captureScreenshots {
+			if sa, err := auto.CaptureScreenToBase64(screenshotQuality); err == nil {
+				screenshotAfter = sa
+			} else {
+				log("WARN", fmt.Sprintf("[Task:%s] 执行后截图失败: %s", taskID, err.Error()))
+			}
+		}
 
 		completedSteps++
 
-		if stepErr != nil {
+		// 4. 构建完整的步骤执行结果
+		stepResult := &StepExecutionResult{
+			StepExecutionID:  stepExecutionID,
+			StepID:           stepID,
+			ActionType:       mapTaskTypeToActionType(stepTaskType),
+			ScreenshotBefore: screenshotBefore,
+			ScreenshotAfter:  screenshotAfter,
+			TargetBounds:     actionResult.TargetBounds,
+			ClickPosition:    actionResult.ClickPosition,
+			InputText:        actionResult.InputText,
+			DurationMs:       durationMs,
+		}
+
+		if !actionResult.Success {
 			failedSteps++
-			taskErr := classifyError(stepErr)
+			taskErr := classifyError(actionResult.Error)
 			log("ERROR", fmt.Sprintf("[Task:%s] 步骤 %s 执行失败: %s", taskID, stepID, taskErr.Message))
 
-			// 发送步骤失败结果
-			e.sendStepResult(stepTaskID, stepID, false, taskErr.Status, taskErr.Message, "{}", time.Since(stepStartTime).Milliseconds(), taskErr.Reason)
+			stepResult.Status = mapTaskStatusToString(taskErr.Status)
+			stepResult.ErrorMessage = taskErr.Message
+			stepResult.FailureReason = mapFailureReasonToString(taskErr.Reason)
+
+			// 发送步骤失败结果（使用增强版）
+			e.sendStepResultV2(stepTaskID, stepResult)
 
 			if stopOnFail {
 				log("INFO", fmt.Sprintf("[Task:%s] stop_on_fail=true，停止执行", taskID))
@@ -839,11 +1008,12 @@ func (e *Executor) executeDebugCase(taskID string, payload map[string]interface{
 			}
 		} else {
 			passedSteps++
-			resultJSON, _ := json.Marshal(stepResult)
 			log("INFO", fmt.Sprintf("[Task:%s] 步骤 %s 执行成功", taskID, stepID))
 
-			// 发送步骤成功结果
-			e.sendStepResult(stepTaskID, stepID, true, pb.TaskStatus_TASK_STATUS_SUCCESS, "", string(resultJSON), time.Since(stepStartTime).Milliseconds(), pb.FailureReason_FAILURE_REASON_UNSPECIFIED)
+			stepResult.Status = "SUCCESS"
+
+			// 发送步骤成功结果（使用增强版）
+			e.sendStepResultV2(stepTaskID, stepResult)
 		}
 	}
 
@@ -920,6 +1090,175 @@ func (e *Executor) executeSingleStep(taskType string, payload map[string]interfa
 	}
 }
 
+// executeSingleStepV2 执行单个步骤（增强版，返回更多信息用于回放）
+func (e *Executor) executeSingleStepV2(taskType string, payload map[string]interface{}) *ActionResult {
+	result := &ActionResult{Success: true}
+
+	// 记录输入文本（用于 type_text 等操作）
+	if text, ok := payload["text"].(string); ok && taskType == TaskTypeTypeText {
+		result.InputText = text
+	}
+
+	// 获取鼠标当前位置（执行前），用于某些操作的位置记录
+	mouseX, mouseY := auto.GetMousePosition()
+
+	// 执行操作
+	var data interface{}
+	var err error
+
+	switch taskType {
+	case TaskTypeClickImage:
+		data, err = e.executeClickImageV2(payload, result)
+	case TaskTypeClickText:
+		data, err = e.executeClickTextV2(payload, result)
+	case TaskTypeMouseClick:
+		data, err = e.executeMouseClickV2(payload, result)
+	case TaskTypeGridClick:
+		data, err = e.executeGridClickV2(payload, result)
+	default:
+		// 对于其他操作，使用原始方法
+		data, err = e.executeSingleStep(taskType, payload)
+	}
+
+	if err != nil {
+		result.Success = false
+		result.Error = err
+		// 记录失败时的鼠标位置（可能有助于调试）
+		if result.ClickPosition == nil {
+			result.ClickPosition = &PositionInfo{X: mouseX, Y: mouseY}
+		}
+	}
+
+	result.Data = data
+	return result
+}
+
+// executeClickImageV2 执行点击图像（增强版，记录位置信息）
+func (e *Executor) executeClickImageV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
+	imagePath, ok := payload["image"].(string)
+	if !ok || imagePath == "" {
+		return nil, fmt.Errorf("缺少 image 参数")
+	}
+
+	gridStr, _ := payload["grid"].(string)
+	opts := e.parseAutoOptions(payload)
+
+	if gridStr != "" {
+		// 使用网格点击 - 需要先获取图像位置再计算网格位置
+		// 目前先执行，后续可以增强返回点击位置
+		err := auto.ClickImageWithGrid(imagePath, gridStr, opts...)
+		if err != nil {
+			return nil, err
+		}
+		// 记录点击后的鼠标位置
+		x, y := auto.GetMousePosition()
+		result.ClickPosition = &PositionInfo{X: x, Y: y}
+		return map[string]interface{}{"clicked": true, "grid": gridStr}, nil
+	}
+
+	// 普通点击 - 使用增强版获取位置信息
+	pos, err := auto.WaitForImage(imagePath, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// 记录目标边界（图像匹配区域的中心点，这里简化处理）
+	result.ClickPosition = &PositionInfo{X: pos.X, Y: pos.Y}
+
+	// 执行点击
+	err = auto.ClickImage(imagePath, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]bool{"clicked": true}, nil
+}
+
+// executeClickTextV2 执行点击文字（增强版，记录位置信息）
+func (e *Executor) executeClickTextV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
+	if !plugin.GetOCRPlugin().IsInstalled() {
+		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
+	}
+
+	text, ok := payload["text"].(string)
+	if !ok || text == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+
+	// 先获取文字位置
+	pos, err := auto.WaitForText(text, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// 记录点击位置
+	result.ClickPosition = &PositionInfo{X: pos.X, Y: pos.Y}
+
+	// 执行点击
+	err = auto.ClickText(text, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]bool{"clicked": true}, nil
+}
+
+// executeMouseClickV2 执行鼠标点击（增强版，记录位置信息）
+func (e *Executor) executeMouseClickV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
+	x, xOk := payload["x"].(float64)
+	y, yOk := payload["y"].(float64)
+	if !xOk || !yOk {
+		return nil, fmt.Errorf("缺少 x 或 y 参数")
+	}
+
+	// 记录点击位置
+	result.ClickPosition = &PositionInfo{X: int(x), Y: int(y)}
+
+	auto.MoveTo(int(x), int(y))
+
+	button, _ := payload["button"].(string)
+	if button == "" {
+		button = "left"
+	}
+
+	double, _ := payload["double"].(bool)
+	if double {
+		auto.DoubleClick(button)
+	} else {
+		auto.Click(button)
+	}
+
+	return map[string]bool{"clicked": true}, nil
+}
+
+// executeGridClickV2 执行网格点击（增强版，记录位置信息）
+func (e *Executor) executeGridClickV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
+	gridStr, ok := payload["grid"].(string)
+	if !ok || gridStr == "" {
+		return nil, fmt.Errorf("缺少 grid 参数")
+	}
+
+	// 计算网格位置
+	screenWidth, screenHeight := auto.GetScreenSize()
+	region := auto.Region{X: 0, Y: 0, Width: screenWidth, Height: screenHeight}
+	
+	pos, err := auto.CalculateGridCenterFromString(region, gridStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// 记录点击位置
+	result.ClickPosition = &PositionInfo{X: pos.X, Y: pos.Y}
+
+	// 执行点击
+	auto.MoveTo(pos.X, pos.Y)
+	auto.Click()
+
+	return map[string]interface{}{"clicked": true, "grid": gridStr, "x": pos.X, "y": pos.Y}, nil
+}
+
 // sendTaskProgress 发送任务进度
 func (e *Executor) sendTaskProgress(taskID string, totalSteps, completedSteps, passedSteps, failedSteps int32, currentStepName, status string) {
 	if e.client == nil {
@@ -945,7 +1284,80 @@ func (e *Executor) sendTaskProgress(taskID string, totalSteps, completedSteps, p
 	e.client.SendTaskMessage(msg)
 }
 
-// sendStepResult 发送单个步骤的执行结果
+// sendStepResultV2 发送单个步骤的执行结果（增强版，包含完整的回放数据）
+func (e *Executor) sendStepResultV2(taskID string, result *StepExecutionResult) {
+	if e.client == nil {
+		return
+	}
+
+	// 序列化完整的步骤执行结果
+	resultJSON, _ := json.Marshal(result)
+
+	// 确定任务状态和失败原因
+	var status pb.TaskStatus
+	var failureReason pb.FailureReason
+	success := result.Status == "SUCCESS"
+
+	switch result.Status {
+	case "SUCCESS":
+		status = pb.TaskStatus_TASK_STATUS_SUCCESS
+		failureReason = pb.FailureReason_FAILURE_REASON_UNSPECIFIED
+	case "FAILED":
+		status = pb.TaskStatus_TASK_STATUS_FAILED
+		switch result.FailureReason {
+		case "NOT_FOUND":
+			failureReason = pb.FailureReason_FAILURE_REASON_NOT_FOUND
+		case "MULTIPLE_MATCHES":
+			failureReason = pb.FailureReason_FAILURE_REASON_MULTIPLE_MATCHES
+		case "ASSERTION_FAILED":
+			failureReason = pb.FailureReason_FAILURE_REASON_ASSERTION_FAILED
+		case "PARAM_ERROR":
+			failureReason = pb.FailureReason_FAILURE_REASON_PARAM_ERROR
+		case "SYSTEM_ERROR":
+			failureReason = pb.FailureReason_FAILURE_REASON_SYSTEM_ERROR
+		default:
+			failureReason = pb.FailureReason_FAILURE_REASON_UNSPECIFIED
+		}
+	case "SKIPPED":
+		status = pb.TaskStatus_TASK_STATUS_SKIPPED
+		failureReason = pb.FailureReason_FAILURE_REASON_UNSPECIFIED
+	default:
+		status = pb.TaskStatus_TASK_STATUS_FAILED
+		failureReason = pb.FailureReason_FAILURE_REASON_UNSPECIFIED
+	}
+
+	// 构建 MatchLocation（如果有目标边界信息）
+	var matchLoc *pb.MatchLocation
+	if result.TargetBounds != nil {
+		matchLoc = &pb.MatchLocation{
+			X:      int32(result.TargetBounds.X),
+			Y:      int32(result.TargetBounds.Y),
+			Width:  int32(result.TargetBounds.Width),
+			Height: int32(result.TargetBounds.Height),
+		}
+	}
+
+	msg := &pb.WorkerMessage{
+		MessageId: fmt.Sprintf("step_result_%d", time.Now().UnixMilli()),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: &pb.WorkerMessage_TaskResult{
+			TaskResult: &pb.TaskResult{
+				TaskId:        taskID,
+				Success:       success,
+				Status:        status,
+				Message:       result.ErrorMessage,
+				ResultJson:    string(resultJSON),
+				DurationMs:    result.DurationMs,
+				FailureReason: failureReason,
+				MatchLocation: matchLoc,
+			},
+		},
+	}
+
+	e.client.SendTaskMessage(msg)
+}
+
+// sendStepResult 发送单个步骤的执行结果（保留旧版本兼容性）
 func (e *Executor) sendStepResult(taskID, stepID string, success bool, status pb.TaskStatus, message, resultJSON string, durationMs int64, failureReason pb.FailureReason) {
 	if e.client == nil {
 		return
