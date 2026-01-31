@@ -8,6 +8,7 @@ on:
 env:
   GO_VERSION: '1.23'
   ONNX_VERSION: '1.19.2'
+  OPENCV_VERSION: '4.10.0'
 
 jobs:
   build-macos:
@@ -17,17 +18,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false  # 禁用缓存避免 gtar 问题
+          cache: false
 
       - name: Install Build Dependencies
         run: |
           brew install cmake ninja pkg-config jpeg-turbo libpng libtiff webp openjpeg zlib || true
           go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build OpenCV from source (minimal, no Qt/FFmpeg/highgui)
+      - name: Build OpenCV from source (minimal)
         run: |
-          OPENCV_VERSION="4.10.0"
-          
           echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
           curl -sL "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
           curl -sL "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
@@ -36,12 +35,14 @@ jobs:
           mkdir -p opencv-${OPENCV_VERSION}/build
           cd opencv-${OPENCV_VERSION}/build
           
-          # 使用系统库避免兼容性问题 (Xcode 16.4 + 内置 zlib 冲突)
-          # CMAKE_POLICY_VERSION_MINIMUM 绕过 CMake 版本检查问题
+          # 关键配置说明：
+          # - BUILD_LIST: 只编译需要的模块，避免 highgui/videoio 拖入 Qt/FFmpeg
+          # - WITH_*=OFF: 禁用所有 GUI/视频后端
+          # - BUILD_*=OFF: 使用系统库，避免内置库与 Xcode 16+ 冲突
+          # - OPENCV_GENERATE_PKGCONFIG=OFF: 避免 CMake 版本兼容问题
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
             -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
             -DWITH_QT=OFF \
@@ -52,6 +53,10 @@ jobs:
             -DWITH_VTK=OFF \
             -DWITH_OPENGL=OFF \
             -DWITH_OPENCL=OFF \
+            -DWITH_IPP=OFF \
+            -DWITH_TBB=OFF \
+            -DWITH_LAPACK=OFF \
+            -DBUILD_opencv_apps=OFF \
             -DBUILD_opencv_highgui=OFF \
             -DBUILD_opencv_videoio=OFF \
             -DBUILD_opencv_viz=OFF \
@@ -75,9 +80,9 @@ jobs:
           ninja -j$(sysctl -n hw.ncpu)
           ninja install
           
-          # 手动创建 pkgconfig 文件
+          # 手动创建 pkgconfig 文件（避免 CMake 脚本兼容问题）
           mkdir -p $HOME/opencv-minimal/lib/pkgconfig
-          cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'PKGEOF'
+          cat > $HOME/opencv-minimal/lib/pkgconfig/opencv4.pc << 'EOF'
 prefix=${pcfiledir}/../..
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
@@ -88,7 +93,7 @@ Description: Open Source Computer Vision Library
 Version: 4.10.0
 Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
 Cflags: -I${includedir}
-PKGEOF
+EOF
           
           echo "=== OpenCV build complete ==="
           ls -la $HOME/opencv-minimal/lib/
@@ -109,7 +114,7 @@ PKGEOF
         run: |
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
-          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -Wl,-rpath,@executable_path/../Frameworks"
           
           mkdir -p dist
           go build -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
@@ -118,13 +123,14 @@ PKGEOF
         run: |
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
-          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -Wl,-rpath,@executable_path/../Frameworks"
           
           cd cmd/zoeyworker-gui
           wails build -ldflags "-s -w" -clean
 
       - name: Package Self-Contained App
         run: |
+          set -e
           APP_BUNDLE="cmd/zoeyworker-gui/build/bin/ZoeyWorker.app"
           FRAMEWORKS_DIR="${APP_BUNDLE}/Contents/Frameworks"
           RESOURCES_DIR="${APP_BUNDLE}/Contents/Resources"
@@ -137,7 +143,7 @@ PKGEOF
           echo "=== Copying ONNX Runtime ==="
           cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/"
           
-          echo "=== Copying OpenCV dylibs (self-built, no highgui/videoio) ==="
+          echo "=== Copying OpenCV dylibs ==="
           for dylib in ${OPENCV_PREFIX}/lib/*.dylib; do
             [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/"
           done
@@ -147,6 +153,7 @@ PKGEOF
             echo "Round $round..."
             changed=0
             for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+              [ ! -f "$dylib" ] && continue
               for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|@rpath" | awk '{print $1}'); do
                 depname=$(basename "$dep")
                 if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
@@ -166,20 +173,25 @@ PKGEOF
             [ $changed -eq 0 ] && break
           done
           
-          echo "=== Fixing paths ==="
-          for dep in $(otool -L "$EXECUTABLE" | grep -E "/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
+          echo "=== Fixing library paths ==="
+          # 修复可执行文件
+          for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
             libname=$(basename "$dep")
-            [ -f "${FRAMEWORKS_DIR}/${libname}" ] && \
+            if [ -f "${FRAMEWORKS_DIR}/${libname}" ]; then
               install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
+            fi
           done
           
+          # 修复所有 dylib
           for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+            [ ! -f "$dylib" ] && continue
             libname=$(basename "$dylib")
             install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
             for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
               depname=$(basename "$dep")
-              [ -f "${FRAMEWORKS_DIR}/${depname}" ] && \
+              if [ -f "${FRAMEWORKS_DIR}/${depname}" ]; then
                 install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
+              fi
             done
           done
           
@@ -194,10 +206,14 @@ PKGEOF
           mv dist/zoeyworker dist/ZoeyWorker.app/Contents/MacOS/zoeyworker-cli
           
           cd dist
-          echo "=== Final size ==="
+          echo "=== Final package info ==="
           du -sh ZoeyWorker.app
           echo "Frameworks:"
           ls -la ZoeyWorker.app/Contents/Frameworks/
+          
+          # 验证没有外部依赖
+          echo "=== Verifying dependencies ==="
+          otool -L ZoeyWorker.app/Contents/MacOS/ZoeyWorker | grep -E "/opt/homebrew|/usr/local" && echo "WARNING: External deps found!" || echo "OK: Self-contained"
           
           zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app
           rm -rf ZoeyWorker.app
@@ -215,7 +231,7 @@ PKGEOF
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false  # 禁用缓存避免问题
+          cache: false
 
       - name: Get Go paths
         id: go-paths
@@ -250,11 +266,9 @@ PKGEOF
             wget
             git
 
-      - name: Build OpenCV from source (minimal, no Qt/FFmpeg/highgui)
+      - name: Build OpenCV from source (minimal)
         shell: msys2 {0}
         run: |
-          OPENCV_VERSION="4.10.0"
-          
           echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
           wget -q "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv.tar.gz
           wget -q "https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv_contrib.tar.gz
@@ -265,13 +279,9 @@ PKGEOF
           mkdir -p opencv-${OPENCV_VERSION}/build
           cd opencv-${OPENCV_VERSION}/build
           
-          # 只编译需要的模块，完全禁用 GUI/视频/Qt/FFmpeg
-          # 使用系统库避免兼容性问题
-          # CMAKE_POLICY_VERSION_MINIMUM 绕过 CMake 版本检查问题
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/mingw64 \
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib-${OPENCV_VERSION}/modules \
             -DBUILD_LIST=core,imgproc,imgcodecs,features2d,flann,calib3d,xfeatures2d \
             -DWITH_QT=OFF \
@@ -285,6 +295,10 @@ PKGEOF
             -DWITH_OPENGL=OFF \
             -DWITH_OPENCL=OFF \
             -DWITH_CUDA=OFF \
+            -DWITH_IPP=OFF \
+            -DWITH_TBB=OFF \
+            -DWITH_LAPACK=OFF \
+            -DBUILD_opencv_apps=OFF \
             -DBUILD_opencv_highgui=OFF \
             -DBUILD_opencv_videoio=OFF \
             -DBUILD_opencv_viz=OFF \
@@ -310,7 +324,7 @@ PKGEOF
           
           # 手动创建 pkgconfig 文件
           mkdir -p /mingw64/lib/pkgconfig
-          cat > /mingw64/lib/pkgconfig/opencv4.pc << 'PKGEOF'
+          cat > /mingw64/lib/pkgconfig/opencv4.pc << 'EOF'
 prefix=/mingw64
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
@@ -321,21 +335,19 @@ Description: Open Source Computer Vision Library
 Version: 4.10.0
 Libs: -L${libdir} -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_xfeatures2d
 Cflags: -I${includedir}
-PKGEOF
+EOF
           
           echo "=== OpenCV build complete ==="
-          ls -la /mingw64/bin/libopencv*.dll
-          pkg-config --modversion opencv4
+          ls -la /mingw64/bin/libopencv*.dll || echo "No OpenCV DLLs found in /mingw64/bin"
+          ls -la /mingw64/lib/libopencv*.dll.a || echo "No OpenCV import libs found"
 
       - name: Download ONNX Runtime & OCR Models
         shell: msys2 {0}
         run: |
-          # 下载 ONNX Runtime
           wget -q "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/onnxruntime-win-x64-${ONNX_VERSION}.zip" -O onnxruntime.zip
           unzip -q onnxruntime.zip
           mv onnxruntime-win-x64-${ONNX_VERSION} onnxruntime
           
-          # 下载 OCR 模型
           mkdir -p models
           git clone --depth 1 https://huggingface.co/getcharzp/go-ocr models/go-ocr-models || true
           if [ -d "models/go-ocr-models" ]; then
@@ -355,7 +367,6 @@ PKGEOF
         run: |
           export PATH="$GOROOT/bin:$GOPATH/bin:/mingw64/bin:$PATH"
           
-          # OpenCV 配置
           export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
           export CGO_ENABLED=1
           export CGO_CFLAGS="$(pkg-config --cflags opencv4)"
@@ -379,13 +390,12 @@ PKGEOF
         run: |
           set -e
           
-          # 检查 exe 是否存在
           if ! ls dist/*.exe 1>/dev/null 2>&1; then
             echo "ERROR: No .exe files found in dist/"
             exit 1
           fi
           
-          echo "=== Collecting all dependencies ==="
+          echo "=== Collecting dependencies ==="
           
           # 递归复制 DLL 依赖
           copy_deps() {
@@ -400,32 +410,25 @@ PKGEOF
             done
           }
           
-          # 复制 exe 的直接依赖
           for exe in dist/*.exe; do
             echo "Processing: $exe"
             copy_deps "$exe"
           done
           
-          # === 复制 ldd 无法检测到的运行时依赖 ===
-          
-          echo "=== Copying ONNX Runtime (purego dynamic loading) ==="
+          echo "=== Copying ONNX Runtime ==="
           cp onnxruntime/lib/*.dll dist/ 2>/dev/null || true
           
-          echo "=== Copying OpenCV DLLs (self-built, no highgui/videoio) ==="
-          # 自编译的 OpenCV 只有我们需要的模块，直接复制全部
+          echo "=== Copying OpenCV DLLs ==="
           for dll in /mingw64/bin/libopencv*.dll; do
             [ -f "$dll" ] && cp "$dll" dist/
           done
           
-          echo "=== Copying MinGW runtime ==="
-          for dll in /mingw64/bin/libgcc_s_seh-1.dll \
-                     /mingw64/bin/libstdc++-6.dll \
-                     /mingw64/bin/libwinpthread-1.dll \
-                     /mingw64/bin/libgomp-1.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
+          echo "=== Copying runtime libraries ==="
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll libgomp-1.dll; do
+            [ -f "/mingw64/bin/$dll" ] && [ ! -f "dist/$dll" ] && cp "/mingw64/bin/$dll" dist/
           done
           
-          echo "=== Copying image codec libraries ==="
+          echo "=== Copying image codecs ==="
           for pattern in "libjpeg*.dll" "libpng*.dll" "libtiff*.dll" "libwebp*.dll" \
                          "zlib*.dll" "liblzma*.dll" "libzstd*.dll" "libbz2*.dll" \
                          "libdeflate*.dll" "libjbig*.dll" "libLerc*.dll" \
@@ -435,33 +438,12 @@ PKGEOF
             done
           done
           
-          # OpenEXR (imgcodecs 可能需要)
-          for pattern in "libOpenEXR*.dll" "libImath*.dll" "libIex*.dll" "libIlmThread*.dll" "libOpenEXRCore*.dll"; do
-            for dll in /mingw64/bin/$pattern; do
-              [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-            done
-          done
-          
-          echo "=== Copying TBB (parallel computing) ==="
-          for dll in /mingw64/bin/libtbb*.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-          done
-          
-          echo "=== Copying OpenBLAS (math) ==="
-          for dll in /mingw64/bin/libopenblas*.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-          done
-          
-          # gfortran/quadmath (OpenBLAS 依赖)
-          for dll in /mingw64/bin/libgfortran*.dll /mingw64/bin/libquadmath*.dll; do
-            [ -f "$dll" ] && [ ! -f "dist/$(basename $dll)" ] && cp "$dll" dist/
-          done
-          
           echo "=== Multi-round dependency check ==="
           for round in 1 2 3 4 5; do
-            echo "Round $round: checking dependencies..."
+            echo "Round $round..."
             changed=0
             for dll in dist/*.dll; do
+              [ ! -f "$dll" ] && continue
               for dep in $(ldd "$dll" 2>/dev/null | grep -i mingw64 | awk '{print $3}'); do
                 depname=$(basename "$dep")
                 if [ -n "$dep" ] && [ -f "$dep" ] && [ ! -f "dist/$depname" ]; then
@@ -471,36 +453,30 @@ PKGEOF
                 fi
               done
             done
-            [ $changed -eq 0 ] && echo "  No new dependencies found, stopping." && break
+            [ $changed -eq 0 ] && break
           done
           
           echo "=== Copying OCR models ==="
           mkdir -p dist/models
           cp -r models/* dist/models/ 2>/dev/null || true
           
-          echo "=== Final package contents ==="
+          echo "=== Final package info ==="
           echo "EXE files:"
           ls -la dist/*.exe
-          echo ""
           echo "DLL count: $(ls -1 dist/*.dll 2>/dev/null | wc -l)"
-          echo ""
-          echo "Models:"
-          ls -la dist/models/ 2>/dev/null || echo "No models"
-          echo ""
           echo "Total size:"
           du -sh dist/
           
-          echo "=== Creating ZIP package ==="
+          echo "=== Creating ZIP ==="
           cd dist
           zip -r ../ZoeyWorker-windows-x64.zip *
           cd ..
           
-          # 清理并保留 zip
           rm -rf dist
           mkdir dist
           mv ZoeyWorker-windows-x64.zip dist/
           
-          echo "=== Package created successfully ==="
+          echo "=== Done ==="
           ls -la dist/
 
       - uses: actions/upload-artifact@v4
