@@ -81,27 +81,15 @@ jobs:
           mkdir -p "${FRAMEWORKS_DIR}"
           mkdir -p "${RESOURCES_DIR}/models"
           
-          echo "=== Copying ONNX Runtime ==="
-          cp onnxruntime/lib/*.dylib "${FRAMEWORKS_DIR}/"
+          echo "=== Copying ONNX Runtime (only versioned dylib) ==="
+          # 只复制带版本号的 dylib，不复制符号链接（避免重复）
+          cp onnxruntime/lib/libonnxruntime.*.dylib "${FRAMEWORKS_DIR}/" 2>/dev/null || true
           
-          echo "=== Copying OpenCV dylibs (only non-symlinks) ==="
-          for dylib in ${OPENCV_PREFIX}/lib/*.dylib; do
-            [ -f "$dylib" ] && [ ! -L "$dylib" ] && cp "$dylib" "${FRAMEWORKS_DIR}/"
-          done
-          
-          echo "=== Copying only essential image codec dependencies ==="
-          # 只复制必需的图像编解码库，不递归复制所有 Homebrew 依赖
-          ESSENTIAL_LIBS="libjpeg libpng libtiff libwebp libopenjp2 libzstd liblzma libbrotli libsharpyuv"
-          for lib in $ESSENTIAL_LIBS; do
-            for dylib in /opt/homebrew/lib/${lib}*.dylib; do
-              if [ -f "$dylib" ] && [ ! -L "$dylib" ]; then
-                libname=$(basename "$dylib")
-                if [ ! -f "${FRAMEWORKS_DIR}/${libname}" ]; then
-                  echo "  Copying: $libname"
-                  cp "$dylib" "${FRAMEWORKS_DIR}/"
-                fi
-              fi
-            done
+          echo "=== Copying OpenCV dylibs (only libopencv_*, exclude OrbbecSDK) ==="
+          for dylib in ${OPENCV_PREFIX}/lib/libopencv_*.dylib; do
+            if [ -f "$dylib" ] && [ ! -L "$dylib" ]; then
+              cp "$dylib" "${FRAMEWORKS_DIR}/"
+            fi
           done
           
           echo "=== Fixing library paths ==="
@@ -126,8 +114,15 @@ jobs:
             done
           done
           
-          echo "=== Copying OCR models ==="
-          cp -r models/* "${RESOURCES_DIR}/models/" 2>/dev/null || true
+          echo "=== Copying OCR models (exclude lib folder with duplicate ONNX Runtime) ==="
+          mkdir -p "${RESOURCES_DIR}/models"
+          for item in models/*; do
+            itemname=$(basename "$item")
+            # 跳过 lib 目录（包含重复的 ONNX Runtime）
+            if [ "$itemname" != "lib" ]; then
+              cp -r "$item" "${RESOURCES_DIR}/models/"
+            fi
+          done
           
           echo "=== Signing ==="
           codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
@@ -138,11 +133,11 @@ jobs:
           
           cd dist
           echo "=== Final package info ==="
-          ls -la ZoeyWorker.app/Contents/Frameworks/ | head -20
-          echo "Total dylibs: $(ls -1 ZoeyWorker.app/Contents/Frameworks/*.dylib | wc -l)"
-          du -sh ZoeyWorker.app
-          echo "Frameworks:"
           ls -la ZoeyWorker.app/Contents/Frameworks/
+          echo "Total dylibs: $(ls -1 ZoeyWorker.app/Contents/Frameworks/*.dylib | wc -l)"
+          du -sh ZoeyWorker.app/Contents/Frameworks/
+          du -sh ZoeyWorker.app/Contents/Resources/
+          du -sh ZoeyWorker.app
           
           echo "=== Verifying dependencies ==="
           otool -L ZoeyWorker.app/Contents/MacOS/ZoeyWorker | grep -E "/opt/homebrew|/usr/local" && echo "WARNING: External deps found!" || echo "OK: Self-contained"
