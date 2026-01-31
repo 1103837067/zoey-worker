@@ -37,9 +37,9 @@ let state = {
   connected: false,
   agentId: '',
   agentName: '',
-  config: null, // 当前配置
-  reconnecting: false, // 是否正在重连
-  reconnectTimer: null // 重连定时器
+  config: null,
+  reconnecting: false,
+  reconnectTimer: null
 }
 
 // ========== 初始化 ==========
@@ -54,17 +54,15 @@ async function init() {
     const config = await window.go.main.App.LoadConfig()
     state.config = config
     
-    // 连接信息
     if (config.server_url) els.serverUrl.value = config.server_url
     if (config.access_key) els.accessKey.value = config.access_key
     if (config.secret_key) els.secretKey.value = config.secret_key
     
-    // 设置选项
     loadSettingsToUI(config)
     
     // 自动连接
     if (config.auto_connect && config.server_url && config.access_key && config.secret_key) {
-      setTimeout(() => connect(), 500) // 延迟连接，等待 UI 就绪
+      setTimeout(() => connect(), 500)
     }
   } catch (e) {
     console.error('加载配置失败:', e)
@@ -124,10 +122,10 @@ function bindEvents() {
 function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     const isActive = btn.dataset.tab === tabName
-    btn.classList.toggle('active', isActive)
-    btn.classList.toggle('bg-gray-900', isActive)
-    btn.classList.toggle('text-white', isActive)
-    btn.classList.toggle('text-gray-400', !isActive)
+    btn.classList.toggle('border-primary', isActive)
+    btn.classList.toggle('text-foreground', isActive)
+    btn.classList.toggle('border-transparent', !isActive)
+    btn.classList.toggle('text-muted-foreground', !isActive)
   })
 
   document.querySelectorAll('.tab-content').forEach(content => {
@@ -136,7 +134,6 @@ function switchTab(tabName) {
 
   lucide.createIcons()
 
-  // 切换到日志时刷新
   if (tabName === 'logs') {
     refreshLogs()
   }
@@ -175,7 +172,6 @@ async function connect() {
 }
 
 async function disconnect() {
-  // 手动断开时取消自动重连
   cancelReconnect()
   
   try {
@@ -191,7 +187,6 @@ async function disconnect() {
   updateUI()
 }
 
-// 检查连接状态
 async function checkConnectionStatus() {
   try {
     const status = await window.go.main.App.GetStatus()
@@ -201,12 +196,10 @@ async function checkConnectionStatus() {
     state.agentId = status.agent_id || ''
     state.agentName = status.agent_name || ''
     
-    // 状态变化时更新 UI
     if (wasConnected !== state.connected) {
       setConnecting(false)
       updateUI()
       
-      // 从已连接变为断开，且启用了自动重连
       if (wasConnected && !state.connected && state.config?.auto_reconnect && !state.reconnecting) {
         scheduleReconnect()
       }
@@ -216,7 +209,6 @@ async function checkConnectionStatus() {
   }
 }
 
-// 安排自动重连
 function scheduleReconnect() {
   if (state.reconnectTimer) {
     clearTimeout(state.reconnectTimer)
@@ -236,7 +228,6 @@ function scheduleReconnect() {
   }, interval)
 }
 
-// 取消自动重连
 function cancelReconnect() {
   if (state.reconnectTimer) {
     clearTimeout(state.reconnectTimer)
@@ -250,13 +241,13 @@ function updateUI() {
   // 状态指示器
   if (state.connected) {
     els.statusIndicator.innerHTML = `
-      <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-      <span class="text-green-400">已连接</span>
+      <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+      <span class="text-emerald-600">已连接</span>
     `
   } else {
     els.statusIndicator.innerHTML = `
       <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
-      <span class="text-gray-400">未连接</span>
+      <span class="text-muted-foreground">未连接</span>
     `
   }
 
@@ -314,9 +305,9 @@ async function refreshLogs() {
     els.logList.innerHTML = logs
       .map(
         log => `
-      <div class="px-2 py-1 hover:bg-gray-700/30 rounded log-${log.level.toLowerCase()}">
-        <span class="text-gray-500">${log.timestamp}</span>
-        <span class="mx-2">[${log.level}]</span>
+      <div class="px-2 py-1 hover:bg-muted/50 rounded log-${log.level.toLowerCase()}">
+        <span class="text-muted-foreground">${log.timestamp}</span>
+        <span class="mx-2 font-medium">[${log.level}]</span>
         <span>${log.message}</span>
       </div>
     `
@@ -332,16 +323,15 @@ function loadSettingsToUI(config) {
   if (!config) return
   
   els.settingAutoConnect.checked = config.auto_connect || false
-  els.settingAutoReconnect.checked = config.auto_reconnect !== false // 默认 true
+  els.settingAutoReconnect.checked = config.auto_reconnect !== false
   els.settingReconnectInterval.value = config.reconnect_interval || 5
   els.settingLogLevel.value = config.log_level || 'INFO'
-  els.settingMinimizeToTray.checked = config.minimize_to_tray !== false // 默认 true
+  els.settingMinimizeToTray.checked = config.minimize_to_tray !== false
   els.settingStartMinimized.checked = config.start_minimized || false
 }
 
 async function saveSettings() {
   try {
-    // 获取当前配置并更新设置
     const config = {
       server_url: els.serverUrl.value.trim() || 'localhost:50051',
       access_key: els.accessKey.value.trim(),
@@ -357,7 +347,6 @@ async function saveSettings() {
     await window.go.main.App.SaveConfig(config)
     state.config = config
     
-    // 显示保存成功提示
     showSettingsSaved()
   } catch (e) {
     console.error('保存设置失败:', e)
@@ -381,7 +370,6 @@ function updateTime() {
 async function checkPermissions() {
   try {
     const info = await window.go.main.App.GetSystemInfo()
-    // 只在 macOS 上显示权限设置
     if (info.platform !== 'macOS') {
       $('permissionsSection').classList.add('hidden')
       return
@@ -401,37 +389,34 @@ function updatePermissionsUI(permissions) {
   const openScreenRecordingBtn = $('openScreenRecordingBtn')
   const permissionWarning = $('permissionWarning')
   
-  // 辅助功能状态
   if (permissions.accessibility) {
     accessibilityStatus.innerHTML = `
-      <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-      <span class="text-sm text-green-400">已授权</span>
+      <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+      <span class="text-sm text-emerald-600">已授权</span>
     `
     openAccessibilityBtn.classList.add('hidden')
   } else {
     accessibilityStatus.innerHTML = `
       <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-      <span class="text-sm text-red-400">未授权</span>
+      <span class="text-sm text-red-500">未授权</span>
     `
     openAccessibilityBtn.classList.remove('hidden')
   }
   
-  // 屏幕录制状态
   if (permissions.screen_recording) {
     screenRecordingStatus.innerHTML = `
-      <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-      <span class="text-sm text-green-400">已授权</span>
+      <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+      <span class="text-sm text-emerald-600">已授权</span>
     `
     openScreenRecordingBtn.classList.add('hidden')
   } else {
     screenRecordingStatus.innerHTML = `
       <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-      <span class="text-sm text-red-400">未授权</span>
+      <span class="text-sm text-red-500">未授权</span>
     `
     openScreenRecordingBtn.classList.remove('hidden')
   }
   
-  // 显示警告
   if (!permissions.all_granted) {
     permissionWarning.classList.remove('hidden')
   } else {
@@ -466,143 +451,9 @@ function bindPermissionEvents() {
   }
 }
 
-// ========== OCR 插件管理 ==========
-async function checkOCRStatus() {
-  try {
-    const status = await window.go.main.App.GetOCRPluginStatus()
-    updateOCRUI(status)
-  } catch (e) {
-    console.error('检查 OCR 状态失败:', e)
-  }
-}
-
-function updateOCRUI(status) {
-  const ocrStatus = $('ocrStatus')
-  const ocrNotInstalled = $('ocrNotInstalled')
-  const ocrDownloading = $('ocrDownloading')
-  const ocrInstalled = $('ocrInstalled')
-  const ocrError = $('ocrError')
-  
-  // 隐藏所有状态
-  ocrNotInstalled.classList.add('hidden')
-  ocrDownloading.classList.add('hidden')
-  ocrInstalled.classList.add('hidden')
-  ocrError.classList.add('hidden')
-  
-  if (status.downloading) {
-    // 下载中
-    ocrStatus.innerHTML = `
-      <span class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
-      <span class="text-sm text-yellow-400">下载中</span>
-    `
-    ocrDownloading.classList.remove('hidden')
-    $('ocrProgress').textContent = `${Math.round(status.progress)}%`
-    $('ocrProgressBar').style.width = `${status.progress}%`
-  } else if (status.installed) {
-    // 已安装
-    ocrStatus.innerHTML = `
-      <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-      <span class="text-sm text-green-400">已安装</span>
-    `
-    ocrInstalled.classList.remove('hidden')
-  } else {
-    // 未安装
-    ocrStatus.innerHTML = `
-      <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
-      <span class="text-sm text-gray-400">未安装</span>
-    `
-    ocrNotInstalled.classList.remove('hidden')
-  }
-  
-  lucide.createIcons()
-}
-
-async function installOCR() {
-  const installBtn = $('installOcrBtn')
-  installBtn.disabled = true
-  
-  // 隐藏错误
-  $('ocrError').classList.add('hidden')
-  
-  try {
-    // 显示下载中状态
-    $('ocrNotInstalled').classList.add('hidden')
-    $('ocrDownloading').classList.remove('hidden')
-    updateOCRUI({ downloading: true, progress: 0, installed: false })
-    
-    // 开始安装
-    await window.go.main.App.InstallOCRPlugin()
-    
-    // 安装完成后检查状态
-    await checkOCRStatus()
-  } catch (e) {
-    console.error('安装 OCR 失败:', e)
-    $('ocrError').classList.remove('hidden')
-    $('ocrErrorMsg').textContent = e.message || '安装失败，请重试'
-    installBtn.disabled = false
-    $('ocrDownloading').classList.add('hidden')
-    $('ocrNotInstalled').classList.remove('hidden')
-  }
-}
-
-async function uninstallOCR() {
-  if (!confirm('确定要卸载 OCR 支持吗？')) {
-    return
-  }
-  
-  try {
-    await window.go.main.App.UninstallOCRPlugin()
-    await checkOCRStatus()
-  } catch (e) {
-    console.error('卸载 OCR 失败:', e)
-    $('ocrError').classList.remove('hidden')
-    $('ocrErrorMsg').textContent = e.message || '卸载失败'
-  }
-}
-
-// 监听 OCR 安装进度事件
-function setupOCREvents() {
-  if (window.runtime && window.runtime.EventsOn) {
-    window.runtime.EventsOn('ocr-install-progress', (progress) => {
-      updateOCRUI({ downloading: true, progress: progress, installed: false })
-    })
-    
-    window.runtime.EventsOn('ocr-install-complete', () => {
-      checkOCRStatus()
-    })
-    
-    window.runtime.EventsOn('ocr-install-error', (errMsg) => {
-      $('ocrError').classList.remove('hidden')
-      $('ocrErrorMsg').textContent = errMsg
-      $('ocrDownloading').classList.add('hidden')
-      $('ocrNotInstalled').classList.remove('hidden')
-    })
-  }
-}
-
-// 绑定 OCR 按钮事件
-function bindOCREvents() {
-  const installBtn = $('installOcrBtn')
-  const uninstallBtn = $('uninstallOcrBtn')
-  
-  if (installBtn) {
-    installBtn.addEventListener('click', installOCR)
-  }
-  if (uninstallBtn) {
-    uninstallBtn.addEventListener('click', uninstallOCR)
-  }
-}
-
 // ========== 启动 ==========
 document.addEventListener('DOMContentLoaded', () => {
   init()
-  
-  // 权限管理
   checkPermissions()
   bindPermissionEvents()
-  
-  // OCR 插件管理
-  checkOCRStatus()
-  bindOCREvents()
-  setupOCREvents()
 })
