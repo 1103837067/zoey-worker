@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 
 	"github.com/wailsapp/wails/v2"
@@ -8,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed frontend/*
@@ -20,22 +22,34 @@ func main() {
 	// 创建 Wails 应用
 	err := wails.Run(&options.App{
 		Title:     "Zoey Worker",
-		Width:     800,
-		Height:    600,
-		MinWidth:  600,
-		MinHeight: 400,
+		Width:     480,
+		Height:    580,
+		MinWidth:  400,
+		MinHeight: 500,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 17, G: 24, B: 39, A: 1}, // gray-900
+		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1}, // 白色背景
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
-		// 关闭窗口时隐藏而不是退出（托盘模式）
-		HideWindowOnClose: true,
+		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			// 关闭窗口时隐藏而不是退出
+			cfg := app.LoadConfig()
+			if cfg.MinimizeToTray {
+				wailsRuntime.WindowHide(ctx)
+				// 发送事件通知前端显示提示
+				if !app.hasShownTrayNotification {
+					app.hasShownTrayNotification = true
+					wailsRuntime.EventsEmit(ctx, "minimized-to-background")
+				}
+				return true // 阻止关闭
+			}
+			return false // 允许关闭
+		},
 		Bind: []interface{}{
 			app,
 		},
-		// macOS 配置 - 使用默认标题栏
+		// macOS 配置
 		Mac: &mac.Options{
 			TitleBar: mac.TitleBarDefault(),
 			About: &mac.AboutInfo{

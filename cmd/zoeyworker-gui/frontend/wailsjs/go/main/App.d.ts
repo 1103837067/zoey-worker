@@ -16,6 +16,8 @@ export function GetStatus():Promise<main.StatusInfo>;
 
 export function GetSystemInfo():Promise<main.SystemInfo>;
 
+export function HideWindow():Promise<void>;
+
 export function InstallOCRPlugin():Promise<void>;
 
 export function LoadConfig():Promise<main.ConfigData>;
@@ -24,8 +26,12 @@ export function OpenAccessibilitySettings():Promise<void>;
 
 export function OpenScreenRecordingSettings():Promise<void>;
 
+export function QuitApp():Promise<void>;
+
 export function RequestAccessibilityPermission():Promise<boolean>;
 
 export function SaveConfig(arg1:main.ConfigData):Promise<void>;
+
+export function ShowWindow():Promise<void>;
 
 export function UninstallOCRPlugin():Promise<void>;

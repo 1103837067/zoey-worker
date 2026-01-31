@@ -30,6 +30,10 @@ export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
 }
 
+export function HideWindow() {
+  return window['go']['main']['App']['HideWindow']();
+}
+
 export function InstallOCRPlugin() {
   return window['go']['main']['App']['InstallOCRPlugin']();
 }
@@ -46,12 +50,20 @@ export function OpenScreenRecordingSettings() {
   return window['go']['main']['App']['OpenScreenRecordingSettings']();
 }
 
+export function QuitApp() {
+  return window['go']['main']['App']['QuitApp']();
+}
+
 export function RequestAccessibilityPermission() {
   return window['go']['main']['App']['RequestAccessibilityPermission']();
 }
 
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
 }
 
 export function UninstallOCRPlugin() {

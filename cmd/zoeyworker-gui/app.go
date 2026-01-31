@@ -16,10 +16,11 @@ import (
 
 // App 应用结构体
 type App struct {
-	ctx        context.Context
-	grpcClient *grpc.Client
-	configMgr  *config.Manager
-	executor   *executor.Executor
+	ctx                      context.Context
+	grpcClient               *grpc.Client
+	configMgr                *config.Manager
+	executor                 *executor.Executor
+	hasShownTrayNotification bool // 是否已显示过托盘通知
 }
 
 // NewApp 创建应用实例
@@ -341,4 +342,23 @@ func (a *App) InstallOCRPlugin() error {
 func (a *App) UninstallOCRPlugin() error {
 	p := plugin.GetOCRPlugin()
 	return p.Uninstall()
+}
+
+// ==================== 窗口控制 ====================
+
+// ShowWindow 显示窗口
+func (a *App) ShowWindow() {
+	wailsRuntime.WindowShow(a.ctx)
+	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
+}
+
+// HideWindow 隐藏窗口
+func (a *App) HideWindow() {
+	wailsRuntime.WindowHide(a.ctx)
+}
+
+// QuitApp 退出应用
+func (a *App) QuitApp() {
+	wailsRuntime.Quit(a.ctx)
 }

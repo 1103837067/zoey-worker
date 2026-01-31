@@ -451,9 +451,50 @@ function bindPermissionEvents() {
   }
 }
 
+// ========== 后台运行提示 ==========
+function setupBackgroundEvents() {
+  // 监听最小化到后台事件
+  if (window.runtime && window.runtime.EventsOn) {
+    window.runtime.EventsOn('minimized-to-background', () => {
+      showBackgroundNotification()
+    })
+  }
+}
+
+function showBackgroundNotification() {
+  // 创建提示元素
+  const notification = document.createElement('div')
+  notification.className = 'fixed bottom-4 right-4 bg-card border shadow-lg rounded-lg p-4 max-w-sm z-50 animate-slide-up'
+  notification.innerHTML = `
+    <div class="flex items-start gap-3">
+      <div class="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" style="background-color: #00FFAE;">
+        <svg width="16" height="16" viewBox="0 0 1864 1864" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M231.385 758.89V308H1691C1666.84 346.916 1636.87 393.79 1602.42 448.903C1559.75 517.159 1493.7 624.026 1493.7 624.026C1493.7 624.026 1415.85 746.813 1376.93 807.2C1339.35 867.587 1304.45 923.277 1272.24 974.271C1240.03 1023.92 1214.53 1064.85 1195.74 1097.06C1195.74 1098.4 1195.07 1099.74 1193.72 1101.08C1195.07 1101.08 1195.74 1101.08 1195.74 1101.08H1658.79V1556H173L702.488 762.916C702.488 761.574 702.488 760.903 702.488 760.903C703.83 759.561 704.501 758.89 704.501 758.89C704.501 758.89 703.83 758.89 702.488 758.89H231.385Z" fill="#FFCC00"/>
+        </svg>
+      </div>
+      <div class="flex-1">
+        <p class="text-sm font-medium">应用已在后台运行</p>
+        <p class="text-xs text-muted-foreground mt-1">点击系统托盘图标可重新打开窗口</p>
+      </div>
+      <button onclick="this.parentElement.parentElement.remove()" class="text-muted-foreground hover:text-foreground">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+  `
+  document.body.appendChild(notification)
+  
+  // 3 秒后自动移除
+  setTimeout(() => {
+    notification.remove()
+  }, 3000)
+}
+
 // ========== 启动 ==========
 document.addEventListener('DOMContentLoaded', () => {
   init()
   checkPermissions()
   bindPermissionEvents()
+  setupBackgroundEvents()
 })
