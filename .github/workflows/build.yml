@@ -26,7 +26,7 @@ jobs:
 
       - name: Build OpenCV from source (minimal, no Qt/FFmpeg/highgui)
         run: |
-          OPENCV_VERSION="4.9.0"
+          OPENCV_VERSION="4.10.0"
           
           echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
           curl -sL "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" | tar xz
@@ -36,6 +36,7 @@ jobs:
           mkdir -p opencv-${OPENCV_VERSION}/build
           cd opencv-${OPENCV_VERSION}/build
           
+          # 使用系统库避免兼容性问题 (Xcode 16.4 + 内置 zlib 冲突)
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=$HOME/opencv-minimal \
@@ -60,6 +61,13 @@ jobs:
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_DOCS=OFF \
             -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_ZLIB=OFF \
+            -DBUILD_PNG=OFF \
+            -DBUILD_JPEG=OFF \
+            -DBUILD_TIFF=OFF \
+            -DBUILD_WEBP=OFF \
+            -DBUILD_OPENJPEG=OFF \
+            -DBUILD_OPENEXR=OFF \
             -DOPENCV_GENERATE_PKGCONFIG=ON
           
           ninja -j$(sysctl -n hw.ncpu)
@@ -228,7 +236,7 @@ jobs:
       - name: Build OpenCV from source (minimal, no Qt/FFmpeg/highgui)
         shell: msys2 {0}
         run: |
-          OPENCV_VERSION="4.9.0"
+          OPENCV_VERSION="4.10.0"
           
           echo "=== Downloading OpenCV ${OPENCV_VERSION} ==="
           wget -q "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz" -O opencv.tar.gz
@@ -241,6 +249,7 @@ jobs:
           cd opencv-${OPENCV_VERSION}/build
           
           # 只编译需要的模块，完全禁用 GUI/视频/Qt/FFmpeg
+          # 使用系统库避免兼容性问题
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/mingw64 \
@@ -268,6 +277,13 @@ jobs:
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_DOCS=OFF \
             -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_ZLIB=OFF \
+            -DBUILD_PNG=OFF \
+            -DBUILD_JPEG=OFF \
+            -DBUILD_TIFF=OFF \
+            -DBUILD_WEBP=OFF \
+            -DBUILD_OPENJPEG=OFF \
+            -DBUILD_OPENEXR=OFF \
             -DOPENCV_GENERATE_PKGCONFIG=ON
           
           ninja -j$(nproc)
