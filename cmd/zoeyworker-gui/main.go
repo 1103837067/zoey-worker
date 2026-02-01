@@ -40,6 +40,7 @@ func main() {
 	mainApp = application.New(application.Options{
 		Name:        "Zoey Worker",
 		Description: "UI 自动化执行客户端",
+		Icon:        appIcon, // 应用图标（用于任务栏、关于窗口等）
 		Services: []application.Service{
 			application.NewService(appService),
 		},
@@ -61,7 +62,6 @@ func main() {
 		BackgroundColour: application.NewRGB(255, 255, 255),
 		URL:              "/",
 		Hidden:           false,
-		Icon:             appIcon, // 设置窗口图标（标题栏和任务栏）
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: false,
 		},
