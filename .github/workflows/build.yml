@@ -211,14 +211,16 @@ jobs:
           fi
           echo "OK: OCR models verified"
           
-          zip -r ZoeyWorker-darwin-arm64.zip ZoeyWorker.app
+          echo "=== Creating DMG installer ==="
+          # 创建 DMG 安装包（不压缩）
+          hdiutil create -volname "ZoeyWorker" -srcfolder ZoeyWorker.app -ov -format UDRO ZoeyWorker-darwin-arm64.dmg
           rm -rf ZoeyWorker.app
           ls -lh
 
       - uses: actions/upload-artifact@v4
         with:
           name: zoeyworker-darwin-arm64
-          path: dist/
+          path: dist/ZoeyWorker-darwin-arm64.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -488,6 +490,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/zoeyworker-darwin-arm64/*.zip
+            artifacts/zoeyworker-darwin-arm64/*.dmg
             artifacts/zoeyworker-windows-amd64/*.exe
           generate_release_notes: true
