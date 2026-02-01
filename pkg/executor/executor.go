@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image/png"
@@ -48,6 +50,55 @@ const (
 // 使用 pb 包中的枚举类型
 // TaskStatus: pb.TaskStatus_TASK_STATUS_SUCCESS, etc.
 // FailureReason: pb.FailureReason_FAILURE_REASON_NOT_FOUND, etc.
+
+// DebugMatchData 调试匹配数据（用于发送到前端调试面板）
+type DebugMatchData struct {
+	TaskID         string  `json:"task_id"`
+	ActionType     string  `json:"action_type"`
+	Status         string  `json:"status"` // searching, found, not_found, error
+	TemplateBase64 string  `json:"template_base64"` // 目标图片 base64
+	ScreenBase64   string  `json:"screen_base64"`   // 截图 base64
+	Matched        bool    `json:"matched"`
+	Confidence     float64 `json:"confidence"`
+	X              int     `json:"x"`
+	Y              int     `json:"y"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
+	Duration       int64   `json:"duration_ms"`
+	Error          string  `json:"error,omitempty"`
+	Timestamp      int64   `json:"timestamp"` // 时间戳，用于前端判断是否有新数据
+}
+
+// 调试数据存储
+var (
+	latestDebugData  *DebugMatchData
+	debugDataMutex   sync.RWMutex
+	debugDataVersion int64 // 版本号，每次更新时递增
+)
+
+// GetLatestDebugData 获取最新的调试数据（供前端轮询）
+func GetLatestDebugData() *DebugMatchData {
+	debugDataMutex.RLock()
+	defer debugDataMutex.RUnlock()
+	return latestDebugData
+}
+
+// GetDebugDataVersion 获取调试数据版本号
+func GetDebugDataVersion() int64 {
+	debugDataMutex.RLock()
+	defer debugDataMutex.RUnlock()
+	return debugDataVersion
+}
+
+// emitDebugMatch 保存调试匹配数据（供前端轮询获取）
+func emitDebugMatch(data DebugMatchData) {
+	debugDataMutex.Lock()
+	defer debugDataMutex.Unlock()
+	
+	data.Timestamp = time.Now().UnixMilli()
+	debugDataVersion++
+	latestDebugData = &data
+}
 
 // TaskError 任务错误
 type TaskError struct {
@@ -466,21 +517,60 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 	
 	opts := e.parseAutoOptions(payload)
 	
+	// 获取任务 ID（用于调试）
+	taskID, _ := payload["task_id"].(string)
+	startTime := time.Now()
+
+	// 发送调试数据的辅助函数
+	sendDebugData := func(status string, matched bool, confidence float64, x, y int, errMsg string) {
+		// 截取当前屏幕
+		screenBase64 := ""
+		if screen, err := auto.CaptureScreen(); err == nil {
+			var buf bytes.Buffer
+			if png.Encode(&buf, screen) == nil {
+				screenBase64 = "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+			}
+		}
+
+		emitDebugMatch(DebugMatchData{
+			TaskID:         taskID,
+			ActionType:     "click_image",
+			Status:         status,
+			TemplateBase64: imagePath, // 模板图片（已经是 base64 或 URL）
+			ScreenBase64:   screenBase64,
+			Matched:        matched,
+			Confidence:     confidence,
+			X:              x,
+			Y:              y,
+			Duration:       time.Since(startTime).Milliseconds(),
+			Error:          errMsg,
+		})
+	}
+
+	// 🔴 立即发送调试数据：开始搜索
+	sendDebugData("searching", false, 0, 0, 0, "")
+	
 	if gridStr != "" {
 		// 使用网格点击
 		err := auto.ClickImageWithGrid(imagePath, gridStr, opts...)
 		if err != nil {
+			sendDebugData("not_found", false, 0, 0, 0, err.Error())
 			return nil, err
 		}
+		x, y := auto.GetMousePosition()
+		sendDebugData("found", true, 1.0, x, y, "")
 		return map[string]interface{}{"clicked": true, "grid": gridStr}, nil
 	}
 	
 	// 普通点击
 	err := auto.ClickImage(imagePath, opts...)
 	if err != nil {
+		sendDebugData("not_found", false, 0, 0, 0, err.Error())
 		return nil, err
 	}
 
+	x, y := auto.GetMousePosition()
+	sendDebugData("found", true, 1.0, x, y, "")
 	return map[string]bool{"clicked": true}, nil
 }
 
@@ -1411,44 +1501,18 @@ func (e *Executor) executeSingleStepV2(taskType string, payload map[string]inter
 }
 
 // executeClickImageV2 执行点击图像（增强版，记录位置信息）
+// 复用 executeClickImage 的逻辑，额外记录点击位置
 func (e *Executor) executeClickImageV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
-	imagePath, ok := payload["image"].(string)
-	if !ok || imagePath == "" {
-		return nil, fmt.Errorf("缺少 image 参数")
-	}
-
-	gridStr, _ := payload["grid"].(string)
-	opts := e.parseAutoOptions(payload)
-
-	if gridStr != "" {
-		// 使用网格点击 - 需要先获取图像位置再计算网格位置
-		// 目前先执行，后续可以增强返回点击位置
-		err := auto.ClickImageWithGrid(imagePath, gridStr, opts...)
-		if err != nil {
-			return nil, err
-		}
-		// 记录点击后的鼠标位置
+	// 调用基础版本（包含调试数据发送）
+	data, err := e.executeClickImage(payload)
+	
+	// 记录点击位置
+	if err == nil {
 		x, y := auto.GetMousePosition()
 		result.ClickPosition = &PositionInfo{X: x, Y: y}
-		return map[string]interface{}{"clicked": true, "grid": gridStr}, nil
 	}
-
-	// 普通点击 - 使用增强版获取位置信息
-	pos, err := auto.WaitForImage(imagePath, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	// 记录目标边界（图像匹配区域的中心点，这里简化处理）
-	result.ClickPosition = &PositionInfo{X: pos.X, Y: pos.Y}
-
-	// 执行点击
-	err = auto.ClickImage(imagePath, opts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string]bool{"clicked": true}, nil
+	
+	return data, err
 }
 
 // executeClickTextV2 执行点击文字（增强版，记录位置信息）

@@ -459,21 +459,19 @@ jobs:
           # 运行 NSIS 编译器
           & "C:\Program Files (x86)\NSIS\makensis.exe" /V3 installer.nsi
           
-          # 移动安装包到 dist 目录
-          Move-Item "ZoeyWorker-Setup-x64.exe" -Destination "dist/"
+          # 移动安装包到输出目录
+          New-Item -ItemType Directory -Path "output" -Force
+          Move-Item "ZoeyWorker-Setup-x64.exe" -Destination "output/"
           
-          # 同时创建 ZIP 便携版
-          Compress-Archive -Path "dist\*" -DestinationPath "dist\ZoeyWorker-windows-x64-portable.zip" -Force
-          
-          Write-Host "=== Final artifacts ==="
-          Get-ChildItem dist/
+          Write-Host "=== Final artifact ==="
+          Get-ChildItem output/
+          Write-Host "=== Installer size ==="
+          Get-Item "output/ZoeyWorker-Setup-x64.exe" | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
           name: zoeyworker-windows-amd64
-          path: |
-            dist/ZoeyWorker-Setup-x64.exe
-            dist/ZoeyWorker-windows-x64-portable.zip
+          path: output/ZoeyWorker-Setup-x64.exe
 
   release:
     needs: [build-macos, build-windows]
@@ -483,9 +481,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: List artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          find artifacts -type f -ls
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/**/*.zip
-            artifacts/**/*.exe
+            artifacts/zoeyworker-darwin-arm64/*.zip
+            artifacts/zoeyworker-windows-amd64/*.exe
           generate_release_notes: true

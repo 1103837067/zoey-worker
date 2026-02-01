@@ -61,6 +61,7 @@ func main() {
 		BackgroundColour: application.NewRGB(255, 255, 255),
 		URL:              "/",
 		Hidden:           false,
+		Icon:             appIcon, // 设置窗口图标（标题栏和任务栏）
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: false,
 		},

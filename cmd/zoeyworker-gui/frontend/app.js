@@ -60,6 +60,7 @@ const App = {
   ShowWindow: () => callBackend(`${SERVICE}.ShowWindow`),
   HideWindow: () => callBackend(`${SERVICE}.HideWindow`),
   QuitApp: () => callBackend(`${SERVICE}.QuitApp`),
+  GetDebugData: (lastVersion) => callBackend(`${SERVICE}.GetDebugData`, lastVersion),
 }
 
 // ========== DOM 元素 ==========
@@ -586,26 +587,28 @@ function showBackgroundNotification() {
 // ========== 调试面板 ==========
 const debugState = {
   history: [], // 匹配历史记录
-  maxHistory: 20
+  maxHistory: 20,
+  lastVersion: 0, // 上次获取的数据版本
+  pollInterval: null // 轮询定时器
 }
 
-// 设置调试事件监听
-function setupDebugEvents() {
-  // Wails v3 事件监听
-  // 等待 wails 加载后再绑定事件
-  const bindDebugEvent = () => {
-    if (window.wails && window.wails.Events && window.wails.Events.On) {
-      window.wails.Events.On('debug:match', (data) => {
-        console.log('收到调试数据:', data)
+// 设置调试数据轮询（类似日志的方式）
+function setupDebugPolling() {
+  // 每 500ms 轮询一次调试数据
+  debugState.pollInterval = setInterval(async () => {
+    try {
+      const data = await App.GetDebugData(debugState.lastVersion)
+      if (data && data.version > debugState.lastVersion) {
+        console.log('收到新的调试数据:', data)
+        debugState.lastVersion = data.version
         updateDebugPanel(data)
-      })
-      console.log('调试事件已绑定')
-    } else {
-      // 如果 wails 还没加载，稍后再试
-      setTimeout(bindDebugEvent, 500)
+      }
+    } catch (e) {
+      // 忽略错误，继续轮询
     }
-  }
-  bindDebugEvent()
+  }, 500)
+  
+  console.log('调试数据轮询已启动')
   
   // 绑定清空历史按钮
   const clearBtn = document.getElementById('clearDebugHistoryBtn')
@@ -617,59 +620,92 @@ function setupDebugEvents() {
   }
 }
 
+// 停止调试轮询
+function stopDebugPolling() {
+  if (debugState.pollInterval) {
+    clearInterval(debugState.pollInterval)
+    debugState.pollInterval = null
+  }
+}
+
 // 更新调试面板
 function updateDebugPanel(data) {
-  // 更新状态
+  console.log('更新调试面板:', data)
+  
+  // 更新状态（根据 status 字段）
   const statusEl = document.getElementById('debugStatus')
   if (statusEl) {
-    if (data.matched) {
-      statusEl.innerHTML = `<span class="w-2 h-2 bg-green-500 rounded-full"></span><span class="text-green-600">匹配成功</span>`
-    } else {
-      statusEl.innerHTML = `<span class="w-2 h-2 bg-red-500 rounded-full"></span><span class="text-red-600">匹配失败</span>`
+    const statusMap = {
+      'searching': { color: 'yellow', text: '搜索中...' },
+      'found': { color: 'green', text: '匹配成功' },
+      'not_found': { color: 'red', text: '未找到' },
+      'error': { color: 'red', text: '错误' }
     }
+    const status = statusMap[data.status] || statusMap['searching']
+    statusEl.innerHTML = `<span class="w-2 h-2 bg-${status.color}-500 rounded-full animate-pulse"></span><span class="text-${status.color}-600">${status.text}</span>`
   }
   
   // 更新信息
-  document.getElementById('debugTaskId').textContent = data.task_id || '-'
-  document.getElementById('debugActionType').textContent = data.action_type || '-'
-  document.getElementById('debugMatchResult').textContent = data.matched ? '成功' : '失败'
-  document.getElementById('debugConfidence').textContent = data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '-'
-  document.getElementById('debugPosition').textContent = data.matched ? `(${data.x}, ${data.y})` : '-'
-  document.getElementById('debugDuration').textContent = data.duration_ms ? `${data.duration_ms}ms` : '-'
+  const taskIdEl = document.getElementById('debugTaskId')
+  const actionTypeEl = document.getElementById('debugActionType')
+  const matchResultEl = document.getElementById('debugMatchResult')
+  const confidenceEl = document.getElementById('debugConfidence')
+  const positionEl = document.getElementById('debugPosition')
+  const durationEl = document.getElementById('debugDuration')
   
-  // 更新目标图片
+  if (taskIdEl) taskIdEl.textContent = data.task_id || '-'
+  if (actionTypeEl) actionTypeEl.textContent = data.action_type || '-'
+  if (matchResultEl) matchResultEl.textContent = data.status === 'searching' ? '搜索中' : (data.matched ? '成功' : '失败')
+  if (confidenceEl) confidenceEl.textContent = data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '-'
+  if (positionEl) positionEl.textContent = data.matched ? `(${data.x}, ${data.y})` : '-'
+  if (durationEl) durationEl.textContent = data.duration_ms ? `${data.duration_ms}ms` : '-'
+  
+  // 更新目标图片（支持 data:image/png;base64,... 格式或纯 base64）
   const templateImg = document.getElementById('debugTemplateImg')
   const templateEmpty = document.getElementById('debugTemplateEmpty')
-  if (data.template_base64) {
-    templateImg.src = `data:image/jpeg;base64,${data.template_base64}`
+  if (data.template_base64 && templateImg && templateEmpty) {
+    // 如果已经是 data: URL 格式，直接使用；否则添加前缀
+    templateImg.src = data.template_base64.startsWith('data:') 
+      ? data.template_base64 
+      : `data:image/png;base64,${data.template_base64}`
     templateImg.classList.remove('hidden')
     templateEmpty.classList.add('hidden')
-  } else {
+  } else if (templateImg && templateEmpty) {
     templateImg.classList.add('hidden')
     templateEmpty.classList.remove('hidden')
   }
   
-  // 更新截图
+  // 更新截图（支持 data:image/png;base64,... 格式或纯 base64）
   const screenImg = document.getElementById('debugScreenshotImg')
   const screenEmpty = document.getElementById('debugScreenshotEmpty')
-  if (data.screen_base64) {
-    screenImg.src = `data:image/jpeg;base64,${data.screen_base64}`
+  if (data.screen_base64 && screenImg && screenEmpty) {
+    // 如果已经是 data: URL 格式，直接使用；否则添加前缀
+    screenImg.src = data.screen_base64.startsWith('data:') 
+      ? data.screen_base64 
+      : `data:image/png;base64,${data.screen_base64}`
     screenImg.classList.remove('hidden')
     screenEmpty.classList.add('hidden')
-  } else {
+  } else if (screenImg && screenEmpty) {
     screenImg.classList.add('hidden')
     screenEmpty.classList.remove('hidden')
   }
   
-  // 添加到历史记录
-  debugState.history.unshift({
-    ...data,
-    timestamp: new Date().toLocaleTimeString()
-  })
-  if (debugState.history.length > debugState.maxHistory) {
-    debugState.history.pop()
+  // 显示错误信息
+  if (data.error) {
+    console.error('匹配错误:', data.error)
   }
-  updateDebugHistory()
+  
+  // 只在最终状态时添加到历史记录（不是 searching）
+  if (data.status !== 'searching') {
+    debugState.history.unshift({
+      ...data,
+      timestamp: new Date().toLocaleTimeString()
+    })
+    if (debugState.history.length > debugState.maxHistory) {
+      debugState.history.pop()
+    }
+    updateDebugHistory()
+  }
 }
 
 // 更新调试历史列表
@@ -714,5 +750,5 @@ document.addEventListener('DOMContentLoaded', () => {
   checkPermissions()
   bindPermissionEvents()
   setupBackgroundEvents()
-  setupDebugEvents()
+  setupDebugPolling() // 使用轮询方式获取调试数据
 })

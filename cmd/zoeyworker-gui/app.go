@@ -39,6 +39,8 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	// 设置 OCR 插件
 	auto.SetOCRPlugin(plugin.GetOCRPlugin())
 
+	// 调试数据通过轮询 GetDebugData 方法获取，不再使用事件
+
 	// 设置 executor 日志函数，将日志路由到 grpcClient
 	executor.SetLogFunc(func(level, message string) {
 		if a.grpcClient != nil {
@@ -350,26 +352,55 @@ func (a *App) QuitApp() {
 
 // ==================== 调试功能 ====================
 
-// DebugMatchData 调试匹配数据
-type DebugMatchData struct {
+// DebugData 调试数据（返回给前端）
+type DebugData struct {
 	TaskID         string  `json:"task_id"`
 	ActionType     string  `json:"action_type"`
-	TemplateBase64 string  `json:"template_base64"` // 目标图片 base64
-	ScreenBase64   string  `json:"screen_base64"`   // 截图 base64
+	Status         string  `json:"status"`
+	TemplateBase64 string  `json:"template_base64"`
+	ScreenBase64   string  `json:"screen_base64"`
 	Matched        bool    `json:"matched"`
 	Confidence     float64 `json:"confidence"`
 	X              int     `json:"x"`
 	Y              int     `json:"y"`
 	Width          int     `json:"width"`
 	Height         int     `json:"height"`
-	Duration       int64   `json:"duration_ms"`
-	Error          string  `json:"error,omitempty"`
+	DurationMs     int64   `json:"duration_ms"`
+	Error          string  `json:"error"`
+	Timestamp      int64   `json:"timestamp"`
+	Version        int64   `json:"version"`
 }
 
-// EmitDebugMatch 发送调试匹配数据到前端
-func EmitDebugMatch(data DebugMatchData) {
-	app := application.Get()
-	if app != nil {
-		app.Event.Emit("debug:match", data)
+// GetDebugData 获取最新的调试数据（供前端轮询）
+func (a *App) GetDebugData(lastVersion int64) *DebugData {
+	currentVersion := executor.GetDebugDataVersion()
+	
+	// 如果版本号没变，返回 nil 表示没有新数据
+	if currentVersion <= lastVersion {
+		return nil
+	}
+	
+	data := executor.GetLatestDebugData()
+	if data == nil {
+		return nil
+	}
+	
+	return &DebugData{
+		TaskID:         data.TaskID,
+		ActionType:     data.ActionType,
+		Status:         data.Status,
+		TemplateBase64: data.TemplateBase64,
+		ScreenBase64:   data.ScreenBase64,
+		Matched:        data.Matched,
+		Confidence:     data.Confidence,
+		X:              data.X,
+		Y:              data.Y,
+		Width:          data.Width,
+		Height:         data.Height,
+		DurationMs:     data.Duration,
+		Error:          data.Error,
+		Timestamp:      data.Timestamp,
+		Version:        currentVersion,
 	}
 }
+
