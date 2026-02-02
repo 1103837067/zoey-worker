@@ -58,8 +58,7 @@ jobs:
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
-          # 注意：排除 highgui 和 videoio，它们依赖 OrbbecSDK 且项目不需要
-          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -Wl,-rpath,@executable_path/../Frameworks"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio -Wl,-rpath,@executable_path/../Frameworks"
           
           mkdir -p dist
           go build -tags customenv -ldflags "-s -w" -o dist/zoeyworker ./cmd/zoeyworker
@@ -69,8 +68,7 @@ jobs:
           export PKG_CONFIG_PATH="$HOME/opencv-minimal/lib/pkgconfig"
           export CGO_CPPFLAGS="-I$HOME/opencv-minimal/include/opencv4"
           export CGO_CXXFLAGS="-I$HOME/opencv-minimal/include/opencv4"
-          # 注意：排除 highgui 和 videoio，它们依赖 OrbbecSDK 且项目不需要
-          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -Wl,-rpath,@executable_path/../Frameworks"
+          export CGO_LDFLAGS="-L$HOME/opencv-minimal/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_features2d -lopencv_flann -lopencv_calib3d -lopencv_objdetect -lopencv_dnn -lopencv_video -lopencv_photo -lopencv_highgui -lopencv_videoio -Wl,-rpath,@executable_path/../Frameworks"
           export DYLD_LIBRARY_PATH="$HOME/opencv-minimal/lib:$DYLD_LIBRARY_PATH"
           
           cd cmd/zoeyworker-gui
@@ -138,71 +136,34 @@ jobs:
           done
           cd - > /dev/null
           
-          echo "=== Copying OpenCV dylibs (exclude highgui/videoio which depend on OrbbecSDK) ==="
+          echo "=== Copying OpenCV dylibs (only libopencv_*, exclude OrbbecSDK) ==="
           for dylib in ${OPENCV_PREFIX}/lib/libopencv_*.dylib; do
             if [ -f "$dylib" ] && [ ! -L "$dylib" ]; then
-              libname=$(basename "$dylib")
-              # 排除 highgui 和 videoio（依赖 OrbbecSDK，项目不需要）
-              if [[ "$libname" == *"highgui"* ]] || [[ "$libname" == *"videoio"* ]]; then
-                echo "  Skipping: $libname (depends on OrbbecSDK)"
-                continue
-              fi
               cp "$dylib" "${FRAMEWORKS_DIR}/"
-              echo "  Copied: $libname"
             fi
           done
-          
-          echo "=== Creating OpenCV symlinks (4.10.0 -> 410) ==="
-          cd "${FRAMEWORKS_DIR}"
-          # 程序链接的是 libopencv_xxx.410.dylib，但实际文件可能是 libopencv_xxx.4.10.0.dylib
-          for f in libopencv_*.4.10.0.dylib; do
-            if [ -f "$f" ]; then
-              # libopencv_core.4.10.0.dylib -> libopencv_core.410.dylib
-              shortname=$(echo "$f" | sed 's/\.4\.10\.0\.dylib/.410.dylib/')
-              if [ ! -f "$shortname" ]; then
-                ln -sf "$f" "$shortname"
-                echo "  Created symlink: $shortname -> $f"
-              fi
-            fi
-          done
-          cd - > /dev/null
-          
-          echo "=== OpenCV libraries in Frameworks ==="
-          ls -la "${FRAMEWORKS_DIR}"/libopencv_*.dylib | head -20
           
           echo "=== Fixing library paths ==="
           # 修复主程序的库引用
           for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
             libname=$(basename "$dep")
-            # 检查文件或符号链接是否存在
-            if [ -f "${FRAMEWORKS_DIR}/${libname}" ] || [ -L "${FRAMEWORKS_DIR}/${libname}" ]; then
+            if [ -f "${FRAMEWORKS_DIR}/${libname}" ]; then
               install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
-              echo "  Fixed: $dep -> @executable_path/../Frameworks/${libname}"
-            else
-              echo "  WARNING: $libname not found in Frameworks"
             fi
           done
           
-          # 修复所有 dylib 的库引用（包括符号链接指向的实际文件）
+          # 修复所有 dylib 的库引用
           for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
-            [ ! -f "$dylib" ] && [ ! -L "$dylib" ] && continue
-            # 跳过符号链接，只处理实际文件
-            [ -L "$dylib" ] && continue
-            
+            [ ! -f "$dylib" ] && continue
             libname=$(basename "$dylib")
             install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
-            
             for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
               depname=$(basename "$dep")
-              if [ -f "${FRAMEWORKS_DIR}/${depname}" ] || [ -L "${FRAMEWORKS_DIR}/${depname}" ]; then
+              if [ -f "${FRAMEWORKS_DIR}/${depname}" ]; then
                 install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
               fi
             done
           done
-          
-          echo "=== Verifying library linking ==="
-          echo "Main executable dependencies:"
-          otool -L "$EXECUTABLE" | grep -E "opencv|onnx" | head -10
           
           echo "=== Copying OCR models ==="
           mkdir -p "${RESOURCES_DIR}/models"
@@ -212,18 +173,8 @@ jobs:
           du -sh "${RESOURCES_DIR}/models/"
           ls -la "${RESOURCES_DIR}/models/paddle_weights/"
           
-          echo "=== Signing (ad-hoc) ==="
-          # 先签名所有 dylib
-          for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
-            [ -f "$dylib" ] && codesign --force --sign - "$dylib" 2>/dev/null || true
-          done
-          # 签名主程序
-          codesign --force --sign - "$EXECUTABLE" 2>/dev/null || true
-          # 签名整个 app bundle
+          echo "=== Signing ==="
           codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
-          
-          # 移除隔离属性（便于用户直接运行）
-          xattr -cr "$APP_BUNDLE" 2>/dev/null || true
           
           mkdir -p dist
           mv "$APP_BUNDLE" dist/
@@ -356,8 +307,7 @@ jobs:
           export PKG_CONFIG_PATH="/c/opencv-minimal/lib/pkgconfig"
           export CGO_ENABLED=1
           export CGO_CFLAGS="-I/c/opencv-minimal/include"
-          # 注意：排除 highgui 和 videoio，项目不需要
-          export CGO_LDFLAGS="-L/c/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100"
+          export CGO_LDFLAGS="-L/c/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100 -lopencv_highgui4100 -lopencv_videoio4100"
           export CGO_CPPFLAGS="$CGO_CFLAGS"
           export CGO_CXXFLAGS="$CGO_CFLAGS"
           export OPENCV_GO_SKIP_LINKING=1
@@ -381,8 +331,7 @@ jobs:
         env:
           CGO_ENABLED: "1"
           CGO_CFLAGS: "-IC:/opencv-minimal/include"
-          # 注意：排除 highgui 和 videoio，项目不需要
-          CGO_LDFLAGS: "-LC:/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100"
+          CGO_LDFLAGS: "-LC:/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100 -lopencv_highgui4100 -lopencv_videoio4100"
           CGO_CPPFLAGS: "-IC:/opencv-minimal/include"
           CGO_CXXFLAGS: "-IC:/opencv-minimal/include"
         run: |
