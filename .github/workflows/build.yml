@@ -153,6 +153,27 @@ jobs:
           done
           cd - > /dev/null
           
+          echo "=== Copying transitive dependencies ==="
+          # 递归复制所有依赖库（类似 Windows 的 copy_deps）
+          for round in 1 2 3 4 5; do
+            echo "Round $round..."
+            changed=0
+            for dylib in "${FRAMEWORKS_DIR}"/*.dylib "$EXECUTABLE"; do
+              [ ! -f "$dylib" ] && continue
+              for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
+                depname=$(basename "$dep")
+                if [ ! -f "${FRAMEWORKS_DIR}/${depname}" ]; then
+                  if [ -f "$dep" ]; then
+                    echo "  Copying: $depname"
+                    cp -L "$dep" "${FRAMEWORKS_DIR}/"
+                    changed=1
+                  fi
+                fi
+              done
+            done
+            [ $changed -eq 0 ] && break
+          done
+          
           echo "=== Fixing library paths ==="
           # 修复主程序的库引用
           for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
