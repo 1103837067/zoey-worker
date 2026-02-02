@@ -32,7 +32,8 @@ jobs:
         run: |
           echo "=== Downloading pre-built OpenCV ${OPENCV_VERSION} ==="
           mkdir -p $HOME/opencv-minimal
-          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-macos-arm64.tar.gz" | tar xz -C $HOME/opencv-minimal
+          # 使用修复了 OrbbecSDK 依赖的预编译版本
+          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}-fix1/opencv-${OPENCV_VERSION}-macos-arm64.tar.gz" | tar xz -C $HOME/opencv-minimal
           echo "=== OpenCV downloaded ==="
           ls -la $HOME/opencv-minimal/lib/
 
@@ -152,6 +153,7 @@ jobs:
             fi
           done
           cd - > /dev/null
+          
           
           echo "=== Copying transitive dependencies ==="
           # 递归复制所有依赖库（类似 Windows 的 copy_deps）
@@ -299,7 +301,8 @@ jobs:
         run: |
           echo "=== Downloading pre-built OpenCV ${OPENCV_VERSION} ==="
           mkdir -p /c/opencv-minimal
-          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
+          # 使用修复了 OrbbecSDK 依赖的预编译版本
+          curl -sL "https://github.com/1103837067/zoey-opencv-prebuilt/releases/download/v${OPENCV_VERSION}-fix1/opencv-${OPENCV_VERSION}-windows-x64.zip" -o opencv.zip
           unzip -q opencv.zip -d /c/opencv-minimal
           echo "=== OpenCV directory structure ==="
           ls -la /c/opencv-minimal/
