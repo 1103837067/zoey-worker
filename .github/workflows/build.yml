@@ -173,8 +173,18 @@ jobs:
           du -sh "${RESOURCES_DIR}/models/"
           ls -la "${RESOURCES_DIR}/models/paddle_weights/"
           
-          echo "=== Signing ==="
+          echo "=== Signing (ad-hoc) ==="
+          # 先签名所有 dylib
+          for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
+            [ -f "$dylib" ] && codesign --force --sign - "$dylib" 2>/dev/null || true
+          done
+          # 签名主程序
+          codesign --force --sign - "$EXECUTABLE" 2>/dev/null || true
+          # 签名整个 app bundle
           codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
+          
+          # 移除隔离属性（便于用户直接运行）
+          xattr -cr "$APP_BUNDLE" 2>/dev/null || true
           
           mkdir -p dist
           mv "$APP_BUNDLE" dist/
