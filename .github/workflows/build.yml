@@ -143,27 +143,57 @@ jobs:
             fi
           done
           
+          echo "=== Creating OpenCV symlinks (4.10.0 -> 410) ==="
+          cd "${FRAMEWORKS_DIR}"
+          # 程序链接的是 libopencv_xxx.410.dylib，但实际文件可能是 libopencv_xxx.4.10.0.dylib
+          for f in libopencv_*.4.10.0.dylib; do
+            if [ -f "$f" ]; then
+              # libopencv_core.4.10.0.dylib -> libopencv_core.410.dylib
+              shortname=$(echo "$f" | sed 's/\.4\.10\.0\.dylib/.410.dylib/')
+              if [ ! -f "$shortname" ]; then
+                ln -sf "$f" "$shortname"
+                echo "  Created symlink: $shortname -> $f"
+              fi
+            fi
+          done
+          cd - > /dev/null
+          
+          echo "=== OpenCV libraries in Frameworks ==="
+          ls -la "${FRAMEWORKS_DIR}"/libopencv_*.dylib | head -20
+          
           echo "=== Fixing library paths ==="
           # 修复主程序的库引用
           for dep in $(otool -L "$EXECUTABLE" 2>/dev/null | grep -E "/opt/homebrew|/usr/local|$HOME|@rpath" | awk '{print $1}'); do
             libname=$(basename "$dep")
-            if [ -f "${FRAMEWORKS_DIR}/${libname}" ]; then
+            # 检查文件或符号链接是否存在
+            if [ -f "${FRAMEWORKS_DIR}/${libname}" ] || [ -L "${FRAMEWORKS_DIR}/${libname}" ]; then
               install_name_tool -change "$dep" "@executable_path/../Frameworks/${libname}" "$EXECUTABLE" 2>/dev/null || true
+              echo "  Fixed: $dep -> @executable_path/../Frameworks/${libname}"
+            else
+              echo "  WARNING: $libname not found in Frameworks"
             fi
           done
           
-          # 修复所有 dylib 的库引用
+          # 修复所有 dylib 的库引用（包括符号链接指向的实际文件）
           for dylib in "${FRAMEWORKS_DIR}"/*.dylib; do
-            [ ! -f "$dylib" ] && continue
+            [ ! -f "$dylib" ] && [ ! -L "$dylib" ] && continue
+            # 跳过符号链接，只处理实际文件
+            [ -L "$dylib" ] && continue
+            
             libname=$(basename "$dylib")
             install_name_tool -id "@executable_path/../Frameworks/${libname}" "$dylib" 2>/dev/null || true
+            
             for dep in $(otool -L "$dylib" 2>/dev/null | grep -E "@rpath|/opt/homebrew|/usr/local|$HOME" | awk '{print $1}'); do
               depname=$(basename "$dep")
-              if [ -f "${FRAMEWORKS_DIR}/${depname}" ]; then
+              if [ -f "${FRAMEWORKS_DIR}/${depname}" ] || [ -L "${FRAMEWORKS_DIR}/${depname}" ]; then
                 install_name_tool -change "$dep" "@executable_path/../Frameworks/${depname}" "$dylib" 2>/dev/null || true
               fi
             done
           done
+          
+          echo "=== Verifying library linking ==="
+          echo "Main executable dependencies:"
+          otool -L "$EXECUTABLE" | grep -E "opencv|onnx" | head -10
           
           echo "=== Copying OCR models ==="
           mkdir -p "${RESOURCES_DIR}/models"
