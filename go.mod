@@ -59,7 +59,7 @@ require (
 	github.com/tailscale/win v0.0.0-20250627215312-f4da2b8ee071 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
-	github.com/up-zero/gotool v0.0.0-20260120011100-d685b2532b5a // indirect
+	github.com/up-zero/gotool v0.0.0-20260130055520-a89880de1db4 // indirect
 	github.com/vcaesar/gops v0.41.0 // indirect
 	github.com/vcaesar/imgo v0.41.0 // indirect
 	github.com/vcaesar/keycode v0.10.1 // indirect

@@ -7,7 +7,14 @@ bin/
 *.dylib
 *.syso
 /zoeyworker
+/zoeyworker-gui
 /ZoeyWorker
+
+# GUI build artifacts
+cmd/zoeyworker-gui/ZoeyWorker
+cmd/zoeyworker-gui/zoeyworker-gui
+cmd/zoeyworker-gui/build/bin/
+cmd/zoeyworker-gui/*.app
 
 # Test binary
 *.test
@@ -40,6 +47,8 @@ models/
 
 # Test output (generated files)
 **/testdata/output/
+benchmarkfiles/targets/*_result.png
+benchmarkfiles/targets/*_test.png
 
 # Coverage
 coverage.txt

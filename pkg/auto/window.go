@@ -206,6 +206,6 @@ func WaitForWindow(title string, opts ...Option) (*WindowInfo, error) {
 			return nil, fmt.Errorf("等待窗口超时: %s", title)
 		}
 
-		Sleep(o.Interval)
+		Sleep(defaultPollInterval)
 	}
 }

@@ -25,7 +25,7 @@ func ReadImage(filename string) (gocv.Mat, error) {
 	if strings.HasPrefix(filename, "data:image/") {
 		return readBase64Image(filename)
 	}
-	
+
 	// 检查是否是纯 base64 字符串 (长度较长且不含路径分隔符)
 	if len(filename) > 100 && !strings.ContainsAny(filename, "/\\") {
 		// 尝试作为 base64 解码
@@ -98,11 +98,6 @@ func ToGray(src gocv.Mat) gocv.Mat {
 	dst := gocv.NewMat()
 	gocv.CvtColor(src, &dst, gocv.ColorBGRToGray)
 	return dst
-}
-
-// GetResolution 获取图像分辨率 (width, height)
-func GetResolution(img gocv.Mat) (int, int) {
-	return img.Cols(), img.Rows()
 }
 
 // CropImage 裁剪图像

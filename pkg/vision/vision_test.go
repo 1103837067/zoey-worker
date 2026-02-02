@@ -2,6 +2,7 @@ package vision
 
 import (
 	"testing"
+	"time"
 )
 
 func TestVersion(t *testing.T) {
@@ -48,38 +49,6 @@ func TestRectangle(t *testing.T) {
 	}
 	if r.Height() != 50 {
 		t.Errorf("Height 错误: got %d, want 50", r.Height())
-	}
-}
-
-func TestTargetPos(t *testing.T) {
-	result := &MatchResult{
-		Result: Point{X: 55, Y: 35},
-		Rectangle: Rectangle{
-			TopLeft:     Point{X: 10, Y: 20},
-			BottomLeft:  Point{X: 10, Y: 50},
-			BottomRight: Point{X: 100, Y: 50},
-			TopRight:    Point{X: 100, Y: 20},
-		},
-		Confidence: 0.9,
-	}
-
-	tests := []struct {
-		pos      TargetPos
-		expected Point
-	}{
-		{TargetPosMid, Point{X: 55, Y: 35}},
-		{TargetPosTopLeft, Point{X: 10, Y: 20}},
-		{TargetPosTopRight, Point{X: 100, Y: 20}},
-		{TargetPosBottomLeft, Point{X: 10, Y: 50}},
-		{TargetPosBottomRight, Point{X: 100, Y: 50}},
-	}
-
-	for _, tc := range tests {
-		got := tc.pos.GetPosition(result)
-		if got.X != tc.expected.X || got.Y != tc.expected.Y {
-			t.Errorf("TargetPos %d: got (%d, %d), want (%d, %d)",
-				tc.pos, got.X, got.Y, tc.expected.X, tc.expected.Y)
-		}
 	}
 }
 
@@ -133,8 +102,8 @@ func TestMatchConfig(t *testing.T) {
 		t.Errorf("默认阈值错误: got %.2f", cfg.threshold)
 	}
 
-	if cfg.rgb {
-		t.Error("默认 rgb 应为 false")
+	if cfg.timeout != 10*time.Second {
+		t.Errorf("默认超时错误: got %s", cfg.timeout)
 	}
 
 	// 测试 Option 函数
@@ -143,33 +112,17 @@ func TestMatchConfig(t *testing.T) {
 		t.Errorf("WithThreshold 失败: got %.2f", cfg.threshold)
 	}
 
-	WithRGB(true)(cfg)
-	if !cfg.rgb {
-		t.Error("WithRGB 失败")
-	}
-
-	WithTargetPos(TargetPosTopLeft)(cfg)
-	if cfg.targetPos != TargetPosTopLeft {
-		t.Errorf("WithTargetPos 失败: got %d", cfg.targetPos)
+	WithTimeout(2 * time.Second)(cfg)
+	if cfg.timeout != 2*time.Second {
+		t.Errorf("WithTimeout 失败: got %s", cfg.timeout)
 	}
 }
 
 func TestMatchMethod(t *testing.T) {
-	methods := []MatchMethod{
-		MatchMethodTemplate,
-		MatchMethodMultiScaleTemplate,
-		MatchMethodKAZE,
-		MatchMethodBRISK,
-		MatchMethodAKAZE,
-		MatchMethodORB,
+	if MatchMethodSIFT == "" {
+		t.Error("MatchMethod 不应为空")
 	}
-
-	for _, m := range methods {
-		if m == "" {
-			t.Error("MatchMethod 不应为空")
-		}
-		t.Logf("MatchMethod: %s", m)
-	}
+	t.Logf("MatchMethod: %s", MatchMethodSIFT)
 }
 
 func TestDefaultMatchMethods(t *testing.T) {

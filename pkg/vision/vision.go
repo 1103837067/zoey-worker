@@ -1,7 +1,7 @@
 // Package vision 提供图像识别与 OCR 功能
 //
 // 主要功能:
-//   - 图像匹配 (CV): 模板匹配、特征点匹配
+//   - 图像匹配 (CV): SIFT 特征点匹配
 //   - 文字识别 (OCR): 基于 PaddleOCR 的中英文识别
 //
 // 基本用法:
@@ -121,24 +121,6 @@ func buildCVOptions(cfg *matchConfig) []cv.TemplateOption {
 	var opts []cv.TemplateOption
 
 	opts = append(opts, cv.WithTemplateThreshold(cfg.threshold))
-	opts = append(opts, cv.WithTemplateRGB(cfg.rgb))
-	opts = append(opts, cv.WithTemplateTargetPos(cv.TargetPos(cfg.targetPos)))
-
-	if cfg.resolution[0] > 0 && cfg.resolution[1] > 0 {
-		opts = append(opts, cv.WithTemplateResolution(cfg.resolution[0], cfg.resolution[1]))
-	}
-
-	if cfg.recordPos != nil {
-		opts = append(opts, cv.WithTemplateRecordPos(cfg.recordPos.X, cfg.recordPos.Y))
-	}
-
-	if len(cfg.methods) > 0 {
-		methods := make([]cv.MatchMethod, len(cfg.methods))
-		for i, m := range cfg.methods {
-			methods[i] = cv.MatchMethod(m)
-		}
-		opts = append(opts, cv.WithTemplateMethods(methods...))
-	}
 
 	return opts
 }

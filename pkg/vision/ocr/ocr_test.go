@@ -865,3 +865,176 @@ func writeOCRReport(path string, results []OcrResult, modelName string, modelSiz
 	return nil
 }
 
+// ============ PP-OCRv5 插件测试 ============
+
+// setupOCRConfigFromPlugin 使用插件配置设置 OCR（PP-OCRv5）
+func setupOCRConfigFromPlugin(t *testing.T) (Config, error) {
+	homeDir, _ := os.UserHomeDir()
+	baseDir := filepath.Join(homeDir, ".zoey-worker", "plugins", "ocr")
+
+	// 检测当前系统架构并选择正确的库
+	var libPath string
+	switch runtime.GOOS {
+	case "windows":
+		libPath = filepath.Join(baseDir, "lib", "onnxruntime.dll")
+	case "darwin":
+		if runtime.GOARCH == "arm64" {
+			libPath = filepath.Join(baseDir, "lib", "onnxruntime_arm64.dylib")
+		} else {
+			libPath = filepath.Join(baseDir, "lib", "onnxruntime_amd64.dylib")
+		}
+	default: // linux
+		if runtime.GOARCH == "arm64" {
+			libPath = filepath.Join(baseDir, "lib", "onnxruntime_arm64.so")
+		} else {
+			libPath = filepath.Join(baseDir, "lib", "onnxruntime_amd64.so")
+		}
+	}
+
+	config := Config{
+		OnnxRuntimeLibPath: libPath,
+		DetModelPath:       filepath.Join(baseDir, "paddle_weights", "det.onnx"),
+		RecModelPath:       filepath.Join(baseDir, "paddle_weights", "rec.onnx"),
+		DictPath:           filepath.Join(baseDir, "paddle_weights", "dict.txt"),
+		Language:           "ch",
+		UseGPU:             false,
+		CPUThreads:         4,
+	}
+
+	// 检查文件是否存在
+	missing := []string{}
+	if !fileExists(config.OnnxRuntimeLibPath) {
+		missing = append(missing, "onnxruntime lib")
+	}
+	if !fileExists(config.DetModelPath) {
+		missing = append(missing, "det.onnx")
+	}
+	if !fileExists(config.RecModelPath) {
+		missing = append(missing, "rec.onnx")
+	}
+	if !fileExists(config.DictPath) {
+		missing = append(missing, "dict.txt")
+	}
+
+	if len(missing) > 0 {
+		return config, fmt.Errorf("缺少文件: %v，请先运行 OCR 插件安装", missing)
+	}
+
+	t.Logf("PP-OCRv5 插件配置:")
+	t.Logf("  OnnxRuntimeLibPath: %s (%.1fMB)", config.OnnxRuntimeLibPath, getFileSizeMB(config.OnnxRuntimeLibPath))
+	t.Logf("  DetModelPath: %s (%.1fMB)", config.DetModelPath, getFileSizeMB(config.DetModelPath))
+	t.Logf("  RecModelPath: %s (%.1fMB)", config.RecModelPath, getFileSizeMB(config.RecModelPath))
+	t.Logf("  DictPath: %s (%.1fKB)", config.DictPath, getFileSizeMB(config.DictPath)*1024)
+
+	return config, nil
+}
+
+// TestPPOCRv5Plugin 测试 PP-OCRv5 插件模型
+func TestPPOCRv5Plugin(t *testing.T) {
+	t.Log("=== PP-OCRv5 插件模型测试 ===")
+	t.Log("模型来源: monkt/paddleocr-onnx (HuggingFace)")
+	t.Log("检测模型: PP-OCRv5_server_det (~88MB)")
+	t.Log("识别模型: PP-OCRv5_server_rec Chinese (~84.5MB)")
+	t.Log("")
+
+	config, err := setupOCRConfigFromPlugin(t)
+	if err != nil {
+		t.Skipf("跳过测试：%v", err)
+		return
+	}
+
+	ClearCache()
+
+	err = InitGlobalRecognizer(config)
+	if err != nil {
+		t.Fatalf("PP-OCRv5 初始化失败: %v", err)
+	}
+
+	// 测试 benchmarkfiles 中的图片
+	root := getProjectRoot()
+	testImages := []string{
+		filepath.Join(root, "benchmarkfiles", "targets", "image.png"),
+		filepath.Join(getTestDataDir(), "target.png"),
+	}
+
+	for _, imgPath := range testImages {
+		if !fileExists(imgPath) {
+			t.Logf("跳过不存在的图片: %s", imgPath)
+			continue
+		}
+
+		t.Logf("\n--- 测试图片: %s ---", filepath.Base(imgPath))
+
+		results, err := RecognizeText(imgPath)
+		if err != nil {
+			t.Errorf("识别失败: %v", err)
+			continue
+		}
+
+		t.Logf("识别到 %d 个文本区域:", len(results))
+		for i, r := range results {
+			if i >= 20 {
+				t.Logf("  ... 还有 %d 个结果", len(results)-20)
+				break
+			}
+			t.Logf("  [%d] '%s' 置信度=%.0f%% 位置=(%d,%d)",
+				i+1, r.Text, r.Confidence*100, r.Position.X, r.Position.Y)
+		}
+	}
+
+	t.Log("\n=== PP-OCRv5 测试完成 ===")
+}
+
+// TestPPOCRv5FindText 测试 PP-OCRv5 的文字查找功能
+func TestPPOCRv5FindText(t *testing.T) {
+	t.Log("=== PP-OCRv5 文字查找测试 ===")
+
+	config, err := setupOCRConfigFromPlugin(t)
+	if err != nil {
+		t.Skipf("跳过测试：%v", err)
+		return
+	}
+
+	ClearCache()
+
+	err = InitGlobalRecognizer(config)
+	if err != nil {
+		t.Fatalf("PP-OCRv5 初始化失败: %v", err)
+	}
+
+	root := getProjectRoot()
+	imgPath := filepath.Join(root, "benchmarkfiles", "targets", "image.png")
+	if !fileExists(imgPath) {
+		t.Skipf("测试图片不存在: %s", imgPath)
+		return
+	}
+
+	// 要查找的文字列表（根据 image.png 的实际内容）
+	searchTexts := []string{
+		"Zoey Mind",
+		"定位器模块",
+		"全部定位器",
+		"图片定位器",
+		"添加步骤",
+		"新建定位器",
+	}
+
+	t.Logf("在图片中查找以下文字:")
+	found := 0
+	for _, text := range searchTexts {
+		pos, err := FindTextPosition(imgPath, text)
+		if err != nil {
+			t.Errorf("  '%s' -> 错误: %v", text, err)
+			continue
+		}
+		if pos != nil {
+			t.Logf("  '%s' -> 找到 位置=(%d,%d)", text, pos.X, pos.Y)
+			found++
+		} else {
+			t.Logf("  '%s' -> 未找到", text)
+		}
+	}
+
+	t.Logf("\n查找结果: %d/%d 成功", found, len(searchTexts))
+}
+

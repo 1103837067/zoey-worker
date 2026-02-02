@@ -46,7 +46,6 @@ auto.ClickImage("button.png",
     auto.WithDoubleClick(),              // 双击
     auto.WithRightClick(),               // 右键
     auto.WithRegion(0, 0, 800, 600),     // 搜索区域
-    auto.WithMultiScale(),               // 强制使用多尺度匹配
 )
 ```
 

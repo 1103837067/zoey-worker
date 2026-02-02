@@ -84,65 +84,20 @@ type OcrResult struct {
 	Box []Point `json:"box,omitempty"`
 }
 
-// TargetPos 目标位置枚举，用于指定返回匹配结果的哪个位置
-type TargetPos int
-
-const (
-	// TargetPosMid 中心点（默认）
-	TargetPosMid TargetPos = iota
-	// TargetPosTopLeft 左上角
-	TargetPosTopLeft
-	// TargetPosTopRight 右上角
-	TargetPosTopRight
-	// TargetPosBottomLeft 左下角
-	TargetPosBottomLeft
-	// TargetPosBottomRight 右下角
-	TargetPosBottomRight
-)
-
-// GetPosition 根据 TargetPos 从 MatchResult 获取对应位置
-func (t TargetPos) GetPosition(result *MatchResult) Point {
-	if result == nil {
-		return Point{}
-	}
-	switch t {
-	case TargetPosTopLeft:
-		return result.Rectangle.TopLeft
-	case TargetPosTopRight:
-		return result.Rectangle.TopRight
-	case TargetPosBottomLeft:
-		return result.Rectangle.BottomLeft
-	case TargetPosBottomRight:
-		return result.Rectangle.BottomRight
-	default:
-		return result.Result
-	}
-}
-
 // ImageInput 支持的图像输入类型
 // 可以是文件路径 (string)、image.Image 或 gocv.Mat
 type ImageInput interface{}
 
 // MatchMethod 匹配方法枚举
+// 仅保留 SIFT 算法
 type MatchMethod string
 
 const (
-	// MatchMethodTemplate 模板匹配
-	MatchMethodTemplate MatchMethod = "tpl"
-	// MatchMethodMultiScaleTemplate 多尺度模板匹配
-	MatchMethodMultiScaleTemplate MatchMethod = "mstpl"
-	// MatchMethodKAZE KAZE 特征点匹配
-	MatchMethodKAZE MatchMethod = "kaze"
-	// MatchMethodBRISK BRISK 特征点匹配
-	MatchMethodBRISK MatchMethod = "brisk"
-	// MatchMethodAKAZE AKAZE 特征点匹配
-	MatchMethodAKAZE MatchMethod = "akaze"
-	// MatchMethodORB ORB 特征点匹配
-	MatchMethodORB MatchMethod = "orb"
+	// MatchMethodSIFT SIFT 特征点匹配
+	MatchMethodSIFT MatchMethod = "sift"
 )
 
 // DefaultMatchMethods 默认匹配方法列表
 var DefaultMatchMethods = []MatchMethod{
-	MatchMethodTemplate,
-	MatchMethodKAZE,
+	MatchMethodSIFT,
 }

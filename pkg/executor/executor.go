@@ -21,30 +21,30 @@ import (
 
 // TaskType 任务类型
 const (
-	TaskTypeClickImage    = "click_image"
-	TaskTypeClickText     = "click_text"
-	TaskTypeClickNative   = "click_native"
-	TaskTypeTypeText      = "type_text"
-	TaskTypeKeyPress      = "key_press"
-	TaskTypeScreenshot    = "screenshot"
-	TaskTypeWaitImage     = "wait_image"
-	TaskTypeWaitText      = "wait_text"
-	TaskTypeWaitTime      = "wait_time"
-	TaskTypeMouseMove     = "mouse_move"
-	TaskTypeMouseClick    = "mouse_click"
-	TaskTypeActivateApp   = "activate_app"
-	TaskTypeCloseApp      = "close_app"
-	TaskTypeGridClick     = "grid_click"
-	TaskTypeImageExists   = "image_exists"
-	TaskTypeTextExists    = "text_exists"
-	TaskTypeAssertImage   = "assert_image"
-	TaskTypeAssertText    = "assert_text"
-	TaskTypeGetClipboard  = "get_clipboard"
-	TaskTypeSetClipboard  = "set_clipboard"
+	TaskTypeClickImage   = "click_image"
+	TaskTypeClickText    = "click_text"
+	TaskTypeClickNative  = "click_native"
+	TaskTypeTypeText     = "type_text"
+	TaskTypeKeyPress     = "key_press"
+	TaskTypeScreenshot   = "screenshot"
+	TaskTypeWaitImage    = "wait_image"
+	TaskTypeWaitText     = "wait_text"
+	TaskTypeWaitTime     = "wait_time"
+	TaskTypeMouseMove    = "mouse_move"
+	TaskTypeMouseClick   = "mouse_click"
+	TaskTypeActivateApp  = "activate_app"
+	TaskTypeCloseApp     = "close_app"
+	TaskTypeGridClick    = "grid_click"
+	TaskTypeImageExists  = "image_exists"
+	TaskTypeTextExists   = "text_exists"
+	TaskTypeAssertImage  = "assert_image"
+	TaskTypeAssertText   = "assert_text"
+	TaskTypeGetClipboard = "get_clipboard"
+	TaskTypeSetClipboard = "set_clipboard"
 	// 批量执行类型
-	TaskTypeDebugCase    = "debug_case"
-	TaskTypeExecutePlan  = "execute_plan"  // 执行测试计划
-	TaskTypeExecuteCase  = "execute_case"  // 执行单个用例
+	TaskTypeDebugCase   = "debug_case"
+	TaskTypeExecutePlan = "execute_plan" // 执行测试计划
+	TaskTypeExecuteCase = "execute_case" // 执行单个用例
 )
 
 // 使用 pb 包中的枚举类型
@@ -55,7 +55,7 @@ const (
 type DebugMatchData struct {
 	TaskID         string  `json:"task_id"`
 	ActionType     string  `json:"action_type"`
-	Status         string  `json:"status"` // searching, found, not_found, error
+	Status         string  `json:"status"`          // searching, found, not_found, error
 	TemplateBase64 string  `json:"template_base64"` // 目标图片 base64
 	ScreenBase64   string  `json:"screen_base64"`   // 截图 base64
 	Matched        bool    `json:"matched"`
@@ -94,7 +94,7 @@ func GetDebugDataVersion() int64 {
 func emitDebugMatch(data DebugMatchData) {
 	debugDataMutex.Lock()
 	defer debugDataMutex.Unlock()
-	
+
 	data.Timestamp = time.Now().UnixMilli()
 	debugDataVersion++
 	latestDebugData = &data
@@ -121,19 +121,19 @@ func classifyError(err error) *TaskError {
 	if err == nil {
 		return nil
 	}
-	
+
 	errStr := err.Error()
 	errLower := strings.ToLower(errStr)
-	
+
 	// 超时单独作为状态
 	if strings.Contains(errLower, "timeout") || strings.Contains(errLower, "超时") {
 		return newTaskError(pb.TaskStatus_TASK_STATUS_TIMEOUT, pb.FailureReason_FAILURE_REASON_UNSPECIFIED, errStr)
 	}
-	
+
 	// 其他错误归类为 FAILED + 具体原因
 	var reason pb.FailureReason
 	switch {
-	case strings.Contains(errLower, "not found") || strings.Contains(errLower, "未找到") || 
+	case strings.Contains(errLower, "not found") || strings.Contains(errLower, "未找到") ||
 		strings.Contains(errLower, "找不到") || strings.Contains(errLower, "匹配失败") ||
 		strings.Contains(errLower, "无法在屏幕中找到"):
 		reason = pb.FailureReason_FAILURE_REASON_NOT_FOUND
@@ -146,7 +146,7 @@ func classifyError(err error) *TaskError {
 	default:
 		reason = pb.FailureReason_FAILURE_REASON_SYSTEM_ERROR
 	}
-	
+
 	return newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, reason, errStr)
 }
 
@@ -155,29 +155,29 @@ type StepExecutionResult struct {
 	StepExecutionID string `json:"stepExecutionId,omitempty"` // 步骤执行记录 ID
 	StepID          string `json:"stepId"`                    // 步骤 ID
 	Status          string `json:"status"`                    // SUCCESS, FAILED, SKIPPED
-	
+
 	// 截图（Base64 格式）
 	ScreenshotBefore string `json:"screenshotBefore,omitempty"` // 执行前截图
 	ScreenshotAfter  string `json:"screenshotAfter,omitempty"`  // 执行后截图
-	
+
 	// 操作信息
 	ActionType string `json:"actionType"` // click, long_press, double_click, input, swipe, assert, wait
-	
+
 	// 目标元素边框（用于回放时高亮显示）
 	TargetBounds *BoundsInfo `json:"targetBounds,omitempty"`
-	
+
 	// 实际点击位置（用于回放时显示点击动画）
 	ClickPosition *PositionInfo `json:"clickPosition,omitempty"`
-	
+
 	// 滑动轨迹（仅 swipe 操作）
 	SwipePath *SwipePathInfo `json:"swipePath,omitempty"`
-	
+
 	// 输入内容（仅 input 操作）
 	InputText string `json:"inputText,omitempty"`
-	
+
 	// 执行耗时（毫秒）
 	DurationMs int64 `json:"durationMs"`
-	
+
 	// 错误信息（仅失败时）
 	ErrorMessage  string `json:"errorMessage,omitempty"`
 	FailureReason string `json:"failureReason,omitempty"` // NOT_FOUND, MULTIPLE_MATCHES, ASSERTION_FAILED, PARAM_ERROR, SYSTEM_ERROR
@@ -299,9 +299,9 @@ type TaskInfo struct {
 
 // Executor 任务执行器
 type Executor struct {
-	client        *grpc.Client
-	runningTasks  map[string]*TaskInfo // 运行中的任务信息
-	tasksMutex    sync.Mutex
+	client       *grpc.Client
+	runningTasks map[string]*TaskInfo // 运行中的任务信息
+	tasksMutex   sync.Mutex
 }
 
 // NewExecutor 创建任务执行器
@@ -373,7 +373,7 @@ func (e *Executor) GetStatus() (status string, currentTaskID string, currentTask
 // Execute 执行任务
 func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 	startTime := time.Now()
-	
+
 	// 日志：任务开始
 	log("INFO", fmt.Sprintf("[Task:%s] 开始执行 type=%s", taskID, taskType))
 	log("DEBUG", fmt.Sprintf("[Task:%s] payload=%s", taskID, truncateString(payloadJSON, 500)))
@@ -490,7 +490,7 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 				}
 			}
 		}
-		
+
 		resultJSON, _ := json.Marshal(result)
 		log("INFO", fmt.Sprintf("[Task:%s] 执行成功 result=%s", taskID, truncateString(string(resultJSON), 200)))
 		e.sendTaskResultSuccess(taskID, string(resultJSON), matchLoc, startTime)
@@ -514,9 +514,9 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 
 	// 检查是否有网格参数
 	gridStr, _ := payload["grid"].(string)
-	
+
 	opts := e.parseAutoOptions(payload)
-	
+
 	// 获取任务 ID（用于调试）
 	taskID, _ := payload["task_id"].(string)
 	startTime := time.Now()
@@ -549,7 +549,7 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 
 	// 🔴 立即发送调试数据：开始搜索
 	sendDebugData("searching", false, 0, 0, 0, "")
-	
+
 	if gridStr != "" {
 		// 使用网格点击
 		err := auto.ClickImageWithGrid(imagePath, gridStr, opts...)
@@ -561,7 +561,7 @@ func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{
 		sendDebugData("found", true, 1.0, x, y, "")
 		return map[string]interface{}{"clicked": true, "grid": gridStr}, nil
 	}
-	
+
 	// 普通点击
 	err := auto.ClickImage(imagePath, opts...)
 	if err != nil {
@@ -626,11 +626,11 @@ func (e *Executor) executeKeyPress(payload map[string]interface{}) (interface{},
 				keys = append(keys, s)
 			}
 		}
-		
+
 		if len(keys) == 0 {
 			return nil, fmt.Errorf("keys 数组为空")
 		}
-		
+
 		// 最后一个是主键，前面的是修饰键
 		if len(keys) == 1 {
 			// 单个按键
@@ -641,10 +641,10 @@ func (e *Executor) executeKeyPress(payload map[string]interface{}) (interface{},
 			modifiers := keys[:len(keys)-1]
 			auto.KeyTap(mainKey, modifiers...)
 		}
-		
+
 		return map[string]interface{}{"pressed": true, "keys": keys}, nil
 	}
-	
+
 	// 旧格式兼容：key + modifiers
 	key, ok := payload["key"].(string)
 	if !ok || key == "" {
@@ -1505,13 +1505,13 @@ func (e *Executor) executeSingleStepV2(taskType string, payload map[string]inter
 func (e *Executor) executeClickImageV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
 	// 调用基础版本（包含调试数据发送）
 	data, err := e.executeClickImage(payload)
-	
+
 	// 记录点击位置
 	if err == nil {
 		x, y := auto.GetMousePosition()
 		result.ClickPosition = &PositionInfo{X: x, Y: y}
 	}
-	
+
 	return data, err
 }
 
@@ -1585,7 +1585,7 @@ func (e *Executor) executeGridClickV2(payload map[string]interface{}, result *Ac
 	// 计算网格位置
 	screenWidth, screenHeight := auto.GetScreenSize()
 	region := auto.Region{X: 0, Y: 0, Width: screenWidth, Height: screenHeight}
-	
+
 	pos, err := auto.CalculateGridCenterFromString(region, gridStr)
 	if err != nil {
 		return nil, err
@@ -1748,11 +1748,6 @@ func (e *Executor) parseAutoOptions(payload map[string]interface{}) []auto.Optio
 
 	if right, ok := payload["right"].(bool); ok && right {
 		opts = append(opts, auto.WithRightClick())
-	}
-
-	// RGB 三通道校验（默认开启，可通过 rgb: false 关闭）
-	if rgb, ok := payload["rgb"].(bool); ok {
-		opts = append(opts, auto.WithRGB(rgb))
 	}
 
 	return opts

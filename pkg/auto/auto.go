@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"time"
 
 	"github.com/go-vgo/robotgo"
@@ -19,11 +20,7 @@ import (
 // ==================== 截图操作 ====================
 
 // CaptureScreen 截取屏幕
-// displayID: 显示器 ID，-1 表示当前显示器
-func CaptureScreen(displayID ...int) (image.Image, error) {
-	if len(displayID) > 0 && displayID[0] >= 0 {
-		robotgo.DisplayID = displayID[0]
-	}
+func CaptureScreen() (image.Image, error) {
 	img, err := robotgo.CaptureImg()
 	if err != nil {
 		return nil, fmt.Errorf("截屏失败: %w", err)
@@ -87,15 +84,15 @@ func ImageToBase64(img image.Image, format string, quality int) (string, error) 
 
 	// 编码为 Base64
 	base64Str := base64.StdEncoding.EncodeToString(buf.Bytes())
-	
+
 	// 返回带 Data URI 前缀的字符串
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64Str), nil
 }
 
 // CaptureScreenToBase64 截取屏幕并转换为 Base64
 // 返回 JPEG 格式的 Base64 字符串（更小的体积）
-func CaptureScreenToBase64(quality int, displayID ...int) (string, error) {
-	img, err := CaptureScreen(displayID...)
+func CaptureScreenToBase64(quality int) (string, error) {
+	img, err := CaptureScreen()
 	if err != nil {
 		return "", err
 	}
@@ -129,17 +126,15 @@ func ClickImageWithGrid(templatePath string, gridStr string, opts ...Option) err
 
 	// 计算匹配区域
 	rect := result.Rectangle
+	minX := minInt(rect.TopLeft.X, rect.TopRight.X, rect.BottomLeft.X, rect.BottomRight.X)
+	maxX := maxInt(rect.TopLeft.X, rect.TopRight.X, rect.BottomLeft.X, rect.BottomRight.X)
+	minY := minInt(rect.TopLeft.Y, rect.TopRight.Y, rect.BottomLeft.Y, rect.BottomRight.Y)
+	maxY := maxInt(rect.TopLeft.Y, rect.TopRight.Y, rect.BottomLeft.Y, rect.BottomRight.Y)
 	matchRegion := Region{
-		X:      rect.TopLeft.X,
-		Y:      rect.TopLeft.Y,
-		Width:  rect.TopRight.X - rect.TopLeft.X,
-		Height: rect.BottomLeft.Y - rect.TopLeft.Y,
-	}
-
-	// 如果有区域限制，加上区域偏移
-	if o.Region != nil {
-		matchRegion.X += o.Region.X
-		matchRegion.Y += o.Region.Y
+		X:      minX,
+		Y:      minY,
+		Width:  maxInt(1, maxX-minX),
+		Height: maxInt(1, maxY-minY),
 	}
 
 	// 计算网格位置的点击坐标
@@ -197,12 +192,8 @@ func waitForImageInternal(templatePath string, o *Options) (*Point, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	pos := result.Result
-	// 如果有区域限制，加上区域偏移
-	if o.Region != nil {
-		return &Point{X: pos.X + o.Region.X, Y: pos.Y + o.Region.Y}, nil
-	}
 	return &Point{X: pos.X, Y: pos.Y}, nil
 }
 
@@ -210,13 +201,11 @@ func waitForImageInternal(templatePath string, o *Options) (*Point, error) {
 func waitForImageResultInternal(templatePath string, o *Options) (*cv.MatchResult, error) {
 	tmpl := cv.NewTemplate(templatePath,
 		cv.WithTemplateThreshold(o.Threshold),
-		cv.WithTemplateMethods(o.Methods...),
-		cv.WithTemplateRGB(o.RGB),
 	)
 
 	startTime := time.Now()
 	for {
-		screen, err := captureForMatch(o)
+		screen, meta, err := captureForMatch(o)
 		if err != nil {
 			return nil, err
 		}
@@ -228,14 +217,14 @@ func waitForImageResultInternal(templatePath string, o *Options) (*cv.MatchResul
 			return nil, fmt.Errorf("匹配失败: %w", err)
 		}
 		if result != nil {
-			return result, nil
+			return adjustMatchResult(result, meta), nil
 		}
 
 		if o.Timeout == 0 || time.Since(startTime) > o.Timeout {
 			return nil, fmt.Errorf("等待图像超时: %s", templatePath)
 		}
 
-		time.Sleep(o.Interval)
+		time.Sleep(defaultPollInterval)
 	}
 }
 
@@ -250,32 +239,29 @@ func waitForImageDataInternal(template image.Image, o *Options) (*Point, error) 
 
 	startTime := time.Now()
 	for {
-		screen, err := captureForMatch(o)
+		screen, meta, err := captureForMatch(o)
 		if err != nil {
 			return nil, err
 		}
 
-		// 使用模板匹配，传递 RGB 配置
-		matcher := cv.NewTemplateMatching(templateMat, screen, o.Threshold, o.RGB)
+		matcher := cv.NewSIFTMatching(templateMat, screen, o.Threshold)
 		result, err := matcher.FindBestResult()
+		matcher.Close()
 		screen.Close()
 
 		if err != nil {
 			return nil, fmt.Errorf("匹配失败: %w", err)
 		}
 		if result != nil {
-			pos := result.Result
-			if o.Region != nil {
-				return &Point{X: pos.X + o.Region.X, Y: pos.Y + o.Region.Y}, nil
-			}
-			return &Point{X: pos.X, Y: pos.Y}, nil
+			adjusted := adjustMatchResult(result, meta)
+			return &Point{X: adjusted.Result.X, Y: adjusted.Result.Y}, nil
 		}
 
 		if o.Timeout == 0 || time.Since(startTime) > o.Timeout {
 			return nil, fmt.Errorf("等待图像超时")
 		}
 
-		time.Sleep(o.Interval)
+		time.Sleep(defaultPollInterval)
 	}
 }
 
@@ -381,7 +367,7 @@ func waitForTextInternal(text string, o *Options) (*Point, error) {
 		if o.Region != nil {
 			img, captureErr = CaptureRegion(o.Region.X, o.Region.Y, o.Region.Width, o.Region.Height)
 		} else {
-			img, captureErr = CaptureScreen(o.DisplayID)
+			img, captureErr = CaptureScreen()
 		}
 		if captureErr != nil {
 			return nil, captureErr
@@ -394,17 +380,16 @@ func waitForTextInternal(text string, o *Options) (*Point, error) {
 		}
 
 		if result != nil {
-			if o.Region != nil {
-				return &Point{X: result.X + o.Region.X, Y: result.Y + o.Region.Y}, nil
-			}
-			return &Point{X: result.X, Y: result.Y}, nil
+			meta := buildCaptureMeta(o, img)
+			adjusted := adjustPoint(Point{X: result.X, Y: result.Y}, meta)
+			return &adjusted, nil
 		}
 
 		if o.Timeout == 0 || time.Since(startTime) > o.Timeout {
 			return nil, fmt.Errorf("等待文字超时: %s", text)
 		}
 
-		time.Sleep(o.Interval)
+		time.Sleep(defaultPollInterval)
 	}
 }
 
@@ -560,13 +545,9 @@ func ReadClipboard() (string, error) {
 // ==================== 内部辅助函数 ====================
 
 // captureForMatch 截图用于匹配
-func captureForMatch(o *Options) (gocv.Mat, error) {
+func captureForMatch(o *Options) (gocv.Mat, captureMeta, error) {
 	var img image.Image
 	var err error
-
-	if o.DisplayID >= 0 {
-		robotgo.DisplayID = o.DisplayID
-	}
 
 	if o.Region != nil {
 		img, err = robotgo.CaptureImg(o.Region.X, o.Region.Y, o.Region.Width, o.Region.Height)
@@ -575,15 +556,112 @@ func captureForMatch(o *Options) (gocv.Mat, error) {
 	}
 
 	if err != nil {
-		return gocv.Mat{}, fmt.Errorf("截屏失败: %w", err)
+		return gocv.Mat{}, captureMeta{}, fmt.Errorf("截屏失败: %w", err)
 	}
 
 	mat, err := gocv.ImageToMatRGB(img)
 	if err != nil {
-		return gocv.Mat{}, fmt.Errorf("转换图像失败: %w", err)
+		return gocv.Mat{}, captureMeta{}, fmt.Errorf("转换图像失败: %w", err)
 	}
 
-	return mat, nil
+	meta := buildCaptureMeta(o, img)
+	return mat, meta, nil
+}
+
+type captureMeta struct {
+	scaleX  float64
+	scaleY  float64
+	offsetX int
+	offsetY int
+}
+
+func buildCaptureMeta(o *Options, img image.Image) captureMeta {
+	bounds := img.Bounds()
+	imgW := bounds.Dx()
+	imgH := bounds.Dy()
+
+	expectedW, expectedH := robotgo.GetScreenSize()
+	offsetX, offsetY := 0, 0
+	if o.Region != nil {
+		expectedW = o.Region.Width
+		expectedH = o.Region.Height
+		offsetX = o.Region.X
+		offsetY = o.Region.Y
+	}
+
+	scaleX := 1.0
+	if expectedW > 0 && imgW > 0 {
+		scaleX = float64(imgW) / float64(expectedW)
+	}
+	scaleY := 1.0
+	if expectedH > 0 && imgH > 0 {
+		scaleY = float64(imgH) / float64(expectedH)
+	}
+
+	return captureMeta{
+		scaleX:  scaleX,
+		scaleY:  scaleY,
+		offsetX: offsetX,
+		offsetY: offsetY,
+	}
+}
+
+func adjustMatchResult(result *cv.MatchResult, meta captureMeta) *cv.MatchResult {
+	if result == nil {
+		return nil
+	}
+
+	adjusted := *result
+	adjusted.Result = adjustCVPoint(result.Result, meta)
+	adjusted.Rectangle = cv.Rectangle{
+		TopLeft:     adjustCVPoint(result.Rectangle.TopLeft, meta),
+		BottomLeft:  adjustCVPoint(result.Rectangle.BottomLeft, meta),
+		BottomRight: adjustCVPoint(result.Rectangle.BottomRight, meta),
+		TopRight:    adjustCVPoint(result.Rectangle.TopRight, meta),
+	}
+
+	return &adjusted
+}
+
+func adjustPoint(p Point, meta captureMeta) Point {
+	return Point{
+		X: scaleCoord(p.X, meta.scaleX) + meta.offsetX,
+		Y: scaleCoord(p.Y, meta.scaleY) + meta.offsetY,
+	}
+}
+
+func adjustCVPoint(p cv.Point, meta captureMeta) cv.Point {
+	return cv.Point{
+		X: scaleCoord(p.X, meta.scaleX) + meta.offsetX,
+		Y: scaleCoord(p.Y, meta.scaleY) + meta.offsetY,
+	}
+}
+
+func scaleCoord(value int, scale float64) int {
+	if scale <= 0 {
+		return value
+	}
+	return int(math.Round(float64(value) / scale))
+}
+
+func minInt(values ...int) int {
+	min := values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+	}
+	return min
+}
+
+func maxInt(values ...int) int {
+	max := values[0]
+	for _, v := range values[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
 }
 
 // clickAt 在指定位置点击

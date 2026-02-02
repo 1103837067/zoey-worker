@@ -2,11 +2,7 @@
 // 组合 vision 模块和 robotgo 实现高级自动化操作
 package auto
 
-import (
-	"time"
-
-	"github.com/zoeyai/zoeyworker/pkg/vision/cv"
-)
+import "time"
 
 // Option 配置选项函数类型
 type Option func(*Options)
@@ -15,8 +11,6 @@ type Option func(*Options)
 type Options struct {
 	// Timeout 操作超时时间
 	Timeout time.Duration
-	// Interval 重试间隔
-	Interval time.Duration
 	// Threshold 图像匹配阈值 (0-1)
 	Threshold float64
 	// ClickOffset 点击偏移量
@@ -25,14 +19,8 @@ type Options struct {
 	DoubleClick bool
 	// RightClick 是否右键点击
 	RightClick bool
-	// Methods 图像匹配方法
-	Methods []cv.MatchMethod
 	// Region 搜索区域 (nil 表示全屏)
 	Region *Region
-	// DisplayID 显示器 ID (-1 表示当前)
-	DisplayID int
-	// RGB 是否使用 RGB 三通道校验（默认开启，提高颜色匹配准确度）
-	RGB bool
 }
 
 // Point 表示二维坐标点
@@ -53,15 +41,11 @@ type Region struct {
 func DefaultOptions() *Options {
 	return &Options{
 		Timeout:     3 * time.Second, // 默认 3 秒超时
-		Interval:    200 * time.Millisecond,
 		Threshold:   0.8,
 		ClickOffset: Point{X: 0, Y: 0},
 		DoubleClick: false,
 		RightClick:  false,
-		Methods:     cv.DefaultMethods,
 		Region:      nil,
-		DisplayID:   -1,
-		RGB:         true, // 默认开启 RGB 三通道校验，提高颜色匹配准确度
 	}
 }
 
@@ -78,13 +62,6 @@ func applyOptions(opts ...Option) *Options {
 func WithTimeout(d time.Duration) Option {
 	return func(o *Options) {
 		o.Timeout = d
-	}
-}
-
-// WithInterval 设置重试间隔
-func WithInterval(d time.Duration) Option {
-	return func(o *Options) {
-		o.Interval = d
 	}
 }
 
@@ -116,29 +93,6 @@ func WithRightClick() Option {
 	}
 }
 
-// WithMethods 设置匹配方法
-func WithMethods(methods ...cv.MatchMethod) Option {
-	return func(o *Options) {
-		o.Methods = methods
-	}
-}
-
-// WithMultiScale 启用多尺度匹配
-// 适用于不同分辨率/DPI 的场景
-func WithMultiScale() Option {
-	return func(o *Options) {
-		o.Methods = []cv.MatchMethod{cv.MatchMethodMultiScaleTemplate}
-	}
-}
-
-// WithMultiScaleFallback 多尺度匹配 + 普通匹配降级策略
-// 先尝试快速的普通匹配，失败则用多尺度
-func WithMultiScaleFallback() Option {
-	return func(o *Options) {
-		o.Methods = []cv.MatchMethod{cv.MatchMethodTemplate, cv.MatchMethodMultiScaleTemplate}
-	}
-}
-
 // WithRegion 设置搜索区域
 func WithRegion(x, y, width, height int) Option {
 	return func(o *Options) {
@@ -146,18 +100,4 @@ func WithRegion(x, y, width, height int) Option {
 	}
 }
 
-// WithDisplayID 设置显示器 ID
-func WithDisplayID(id int) Option {
-	return func(o *Options) {
-		o.DisplayID = id
-	}
-}
-
-// WithRGB 设置是否使用 RGB 三通道校验
-// 开启后会对 R/G/B 三个通道分别计算置信度，取最低值
-// 适用于需要精确颜色匹配的场景
-func WithRGB(rgb bool) Option {
-	return func(o *Options) {
-		o.RGB = rgb
-	}
-}
+const defaultPollInterval = 200 * time.Millisecond

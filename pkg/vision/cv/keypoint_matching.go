@@ -9,6 +9,13 @@ import (
 	"gocv.io/x/gocv"
 )
 
+const (
+	defaultKeypointMinInliers    = 4
+	defaultKeypointMinInlierRate = 0.3
+	defaultCornerTolRatio        = 0.02
+	defaultCornerTolPx           = 8.0
+)
+
 // KeypointMatcher 特征点匹配器接口
 type KeypointMatcher interface {
 	// Detect 检测特征点
@@ -22,10 +29,11 @@ type keypointMatchingBase struct {
 	imSearch   gocv.Mat
 	imSource   gocv.Mat
 	threshold  float64
-	rgb        bool
 	detector   KeypointMatcher
 	normType   gocv.NormType
 	methodName string
+	minInliers int
+	minInRate  float64
 }
 
 // FindBestResult 查找最佳匹配结果
@@ -47,8 +55,8 @@ func (k *keypointMatchingBase) FindBestResult() (*MatchResult, error) {
 		return nil, nil
 	}
 
-	// 创建匹配器
-	matcher := gocv.NewBFMatcher()
+	// 创建匹配器（使用匹配器对应的距离类型）
+	matcher := gocv.NewBFMatcherWithParams(k.normType, false)
 	defer matcher.Close()
 
 	// 进行 KNN 匹配
@@ -109,15 +117,15 @@ func (k *keypointMatchingBase) computeResult(kpSearch, kpSource []gocv.KeyPoint,
 		}
 	}
 
-	// 根据匹配点数量选择不同的计算方式
 	if len(matches) >= 4 {
 		return k.computeWithHomography(srcPts, dstPts, matches)
-	} else if len(matches) == 3 {
+	}
+	if len(matches) == 3 {
 		return k.computeWithThreePoints(srcPts, dstPts, matches)
-	} else if len(matches) == 2 {
+	}
+	if len(matches) == 2 {
 		return k.computeWithTwoPoints(srcPts, dstPts, matches)
 	}
-
 	return nil, nil
 }
 
@@ -146,6 +154,11 @@ func (k *keypointMatchingBase) computeWithHomography(srcPts, dstPts []gocv.Point
 		return nil, nil
 	}
 
+	inliers, inlierRate := countInliers(mask, len(matches))
+	if inliers < k.minInliers || inlierRate < k.minInRate {
+		return nil, nil
+	}
+
 	// 获取搜索图像的四个角点
 	h, w := k.imSearch.Rows(), k.imSearch.Cols()
 	corners := []gocv.Point2f{
@@ -157,6 +170,10 @@ func (k *keypointMatchingBase) computeWithHomography(srcPts, dstPts []gocv.Point
 
 	// 透视变换
 	transformedCorners := perspectiveTransform(corners, H)
+
+	if !validateCorners(transformedCorners, k.imSource.Cols(), k.imSource.Rows()) {
+		return nil, nil
+	}
 
 	// 计算中心点
 	centerX := (transformedCorners[0].X + transformedCorners[2].X) / 2
@@ -189,7 +206,7 @@ func (k *keypointMatchingBase) computeWithThreePoints(srcPts, dstPts []gocv.Poin
 
 	confidence := k.calculateSimpleConfidence(matches)
 
-	return &MatchResult{
+	result := &MatchResult{
 		Result: Point{X: int(centerX), Y: int(centerY)},
 		Rectangle: Rectangle{
 			TopLeft:     Point{X: int(centerX - halfW), Y: int(centerY - halfH)},
@@ -198,7 +215,13 @@ func (k *keypointMatchingBase) computeWithThreePoints(srcPts, dstPts []gocv.Poin
 			TopRight:    Point{X: int(centerX + halfW), Y: int(centerY - halfH)},
 		},
 		Confidence: confidence,
-	}, nil
+	}
+
+	if !validateCorners(rectToCorners(result.Rectangle), k.imSource.Cols(), k.imSource.Rows()) {
+		return nil, nil
+	}
+
+	return result, nil
 }
 
 // computeWithTwoPoints 使用两个点计算
@@ -212,7 +235,7 @@ func (k *keypointMatchingBase) computeWithTwoPoints(srcPts, dstPts []gocv.Point2
 
 	confidence := k.calculateSimpleConfidence(matches)
 
-	return &MatchResult{
+	result := &MatchResult{
 		Result: Point{X: int(centerX), Y: int(centerY)},
 		Rectangle: Rectangle{
 			TopLeft:     Point{X: int(centerX - halfW), Y: int(centerY - halfH)},
@@ -221,7 +244,13 @@ func (k *keypointMatchingBase) computeWithTwoPoints(srcPts, dstPts []gocv.Point2
 			TopRight:    Point{X: int(centerX + halfW), Y: int(centerY - halfH)},
 		},
 		Confidence: confidence,
-	}, nil
+	}
+
+	if !validateCorners(rectToCorners(result.Rectangle), k.imSource.Cols(), k.imSource.Rows()) {
+		return nil, nil
+	}
+
+	return result, nil
 }
 
 // calculateConfidence 计算置信度
@@ -231,12 +260,7 @@ func (k *keypointMatchingBase) calculateConfidence(matches []gocv.DMatch, mask g
 	}
 
 	// 统计内点数量
-	inliers := 0
-	for i := 0; i < mask.Rows(); i++ {
-		if mask.GetUCharAt(i, 0) > 0 {
-			inliers++
-		}
-	}
+	inliers, _ := countInliers(mask, len(matches))
 
 	// 置信度 = 内点比例，然后做修正 (1 + confidence) / 2
 	confidence := float64(inliers) / float64(len(matches))
@@ -278,6 +302,90 @@ func filterGoodMatches(matches [][]gocv.DMatch, ratio float64) []gocv.DMatch {
 	return good
 }
 
+func countInliers(mask gocv.Mat, total int) (int, float64) {
+	if total == 0 || mask.Empty() {
+		return 0, 0
+	}
+	inliers := 0
+	for i := 0; i < mask.Rows(); i++ {
+		if mask.GetUCharAt(i, 0) > 0 {
+			inliers++
+		}
+	}
+	return inliers, float64(inliers) / float64(total)
+}
+
+func validateCorners(corners []gocv.Point2f, width, height int) bool {
+	if len(corners) != 4 || width <= 0 || height <= 0 {
+		return false
+	}
+
+	w := float64(width)
+	h := float64(height)
+	tolX := math.Max(defaultCornerTolPx, w*defaultCornerTolRatio)
+	tolY := math.Max(defaultCornerTolPx, h*defaultCornerTolRatio)
+
+	minX, minY := math.MaxFloat64, math.MaxFloat64
+	maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
+
+	for _, pt := range corners {
+		x := float64(pt.X)
+		y := float64(pt.Y)
+		if math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+			return false
+		}
+		if x < -tolX || x > (w-1)+tolX || y < -tolY || y > (h-1)+tolY {
+			return false
+		}
+		if x < minX {
+			minX = x
+		}
+		if x > maxX {
+			maxX = x
+		}
+		if y < minY {
+			minY = y
+		}
+		if y > maxY {
+			maxY = y
+		}
+	}
+
+	if maxX-minX < 2 || maxY-minY < 2 {
+		return false
+	}
+
+	if polygonArea(corners) < 1 {
+		return false
+	}
+
+	return true
+}
+
+func polygonArea(pts []gocv.Point2f) float64 {
+	if len(pts) < 3 {
+		return 0
+	}
+	area := 0.0
+	for i := 0; i < len(pts); i++ {
+		j := (i + 1) % len(pts)
+		area += float64(pts[i].X*pts[j].Y - pts[j].X*pts[i].Y)
+	}
+	if area < 0 {
+		area = -area
+	}
+	return area * 0.5
+}
+
+func rectToCorners(rect Rectangle) []gocv.Point2f {
+	return []gocv.Point2f{
+		{X: float32(rect.TopLeft.X), Y: float32(rect.TopLeft.Y)},
+		{X: float32(rect.BottomLeft.X), Y: float32(rect.BottomLeft.Y)},
+		{X: float32(rect.BottomRight.X), Y: float32(rect.BottomRight.Y)},
+		{X: float32(rect.TopRight.X), Y: float32(rect.TopRight.Y)},
+	}
+}
+
 // perspectiveTransform 透视变换
 func perspectiveTransform(pts []gocv.Point2f, H gocv.Mat) []gocv.Point2f {
 	result := make([]gocv.Point2f, len(pts))
@@ -308,138 +416,37 @@ func perspectiveTransform(pts []gocv.Point2f, H gocv.Mat) []gocv.Point2f {
 	return result
 }
 
-// KAZEMatching KAZE 特征点匹配
-type KAZEMatching struct {
+// SIFTMatching SIFT 特征点匹配
+type SIFTMatching struct {
 	*keypointMatchingBase
-	kaze gocv.KAZE
+	sift gocv.SIFT
 }
 
-// NewKAZEMatching 创建 KAZE 匹配器
-func NewKAZEMatching(search, source gocv.Mat, threshold float64, rgb bool) *KAZEMatching {
-	kaze := gocv.NewKAZE()
-	m := &KAZEMatching{
+// NewSIFTMatching 创建 SIFT 匹配器
+func NewSIFTMatching(search, source gocv.Mat, threshold float64) *SIFTMatching {
+	sift := gocv.NewSIFT()
+	m := &SIFTMatching{
 		keypointMatchingBase: &keypointMatchingBase{
 			imSearch:   search,
 			imSource:   source,
 			threshold:  threshold,
-			rgb:        rgb,
-			normType:   gocv.NormL1,
-			methodName: "KAZE",
+			normType:   gocv.NormL2,
+			methodName: "SIFT",
+			minInliers: defaultKeypointMinInliers,
+			minInRate:  defaultKeypointMinInlierRate,
 		},
-		kaze: kaze,
+		sift: sift,
 	}
 	m.detector = m
 	return m
 }
 
 // Detect 检测特征点
-func (k *KAZEMatching) Detect(img gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
-	return k.kaze.DetectAndCompute(img, gocv.NewMat())
+func (s *SIFTMatching) Detect(img gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+	return s.sift.DetectAndCompute(img, gocv.NewMat())
 }
 
 // Close 释放资源
-func (k *KAZEMatching) Close() {
-	k.kaze.Close()
-}
-
-// BRISKMatching BRISK 特征点匹配
-type BRISKMatching struct {
-	*keypointMatchingBase
-	brisk gocv.BRISK
-}
-
-// NewBRISKMatching 创建 BRISK 匹配器
-func NewBRISKMatching(search, source gocv.Mat, threshold float64, rgb bool) *BRISKMatching {
-	brisk := gocv.NewBRISK()
-	m := &BRISKMatching{
-		keypointMatchingBase: &keypointMatchingBase{
-			imSearch:   search,
-			imSource:   source,
-			threshold:  threshold,
-			rgb:        rgb,
-			normType:   gocv.NormHamming,
-			methodName: "BRISK",
-		},
-		brisk: brisk,
-	}
-	m.detector = m
-	return m
-}
-
-// Detect 检测特征点
-func (b *BRISKMatching) Detect(img gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
-	return b.brisk.DetectAndCompute(img, gocv.NewMat())
-}
-
-// Close 释放资源
-func (b *BRISKMatching) Close() {
-	b.brisk.Close()
-}
-
-// AKAZEMatching AKAZE 特征点匹配
-type AKAZEMatching struct {
-	*keypointMatchingBase
-	akaze gocv.AKAZE
-}
-
-// NewAKAZEMatching 创建 AKAZE 匹配器
-func NewAKAZEMatching(search, source gocv.Mat, threshold float64, rgb bool) *AKAZEMatching {
-	akaze := gocv.NewAKAZE()
-	m := &AKAZEMatching{
-		keypointMatchingBase: &keypointMatchingBase{
-			imSearch:   search,
-			imSource:   source,
-			threshold:  threshold,
-			rgb:        rgb,
-			normType:   gocv.NormL1,
-			methodName: "AKAZE",
-		},
-		akaze: akaze,
-	}
-	m.detector = m
-	return m
-}
-
-// Detect 检测特征点
-func (a *AKAZEMatching) Detect(img gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
-	return a.akaze.DetectAndCompute(img, gocv.NewMat())
-}
-
-// Close 释放资源
-func (a *AKAZEMatching) Close() {
-	a.akaze.Close()
-}
-
-// ORBMatching ORB 特征点匹配
-type ORBMatching struct {
-	*keypointMatchingBase
-	orb gocv.ORB
-}
-
-// NewORBMatching 创建 ORB 匹配器
-func NewORBMatching(search, source gocv.Mat, threshold float64, rgb bool) *ORBMatching {
-	orb := gocv.NewORB()
-	m := &ORBMatching{
-		keypointMatchingBase: &keypointMatchingBase{
-			imSearch:   search,
-			imSource:   source,
-			threshold:  threshold,
-			rgb:        rgb,
-			normType:   gocv.NormHamming,
-			methodName: "ORB",
-		},
-		orb: orb,
-	}
-	m.detector = m
-	return m
-}
-
-// Detect 检测特征点
-func (o *ORBMatching) Detect(img gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
-	return o.orb.DetectAndCompute(img, gocv.NewMat())
-}
-
-// Close 释放资源
-func (o *ORBMatching) Close() {
-	o.orb.Close()
+func (s *SIFTMatching) Close() {
+	s.sift.Close()
 }
