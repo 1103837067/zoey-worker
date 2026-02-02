@@ -136,12 +136,22 @@ jobs:
           done
           cd - > /dev/null
           
-          echo "=== Copying OpenCV dylibs (only libopencv_*, exclude OrbbecSDK) ==="
+          echo "=== Copying OpenCV dylibs ==="
+          # 复制所有 OpenCV dylib（包括符号链接）
           for dylib in ${OPENCV_PREFIX}/lib/libopencv_*.dylib; do
-            if [ -f "$dylib" ] && [ ! -L "$dylib" ]; then
-              cp "$dylib" "${FRAMEWORKS_DIR}/"
+            if [ -f "$dylib" ]; then
+              cp -P "$dylib" "${FRAMEWORKS_DIR}/"
             fi
           done
+          # 如果没有 .410.dylib 符号链接，创建它们（gocv 引用的是这个格式）
+          cd "${FRAMEWORKS_DIR}"
+          for f in libopencv_*.4.10.0.dylib; do
+            if [ -f "$f" ]; then
+              base=$(echo "$f" | sed 's/\.4\.10\.0\.dylib$//')
+              ln -sf "$f" "${base}.410.dylib" 2>/dev/null || true
+            fi
+          done
+          cd - > /dev/null
           
           echo "=== Fixing library paths ==="
           # 修复主程序的库引用
