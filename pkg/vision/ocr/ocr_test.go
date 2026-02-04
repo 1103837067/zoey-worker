@@ -1037,4 +1037,3 @@ func TestPPOCRv5FindText(t *testing.T) {
 
 	t.Logf("\n查找结果: %d/%d 成功", found, len(searchTexts))
 }
-
