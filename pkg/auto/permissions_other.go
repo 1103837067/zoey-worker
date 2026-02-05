@@ -48,3 +48,9 @@ func EnsurePermissions() (bool, string) {
 func PrintPermissionStatus() {
 	// 非 macOS 不需要打印
 }
+
+// ResetPermissions 重置权限状态
+func ResetPermissions() error {
+	// 非 macOS 不需要重置权限
+	return nil
+}
