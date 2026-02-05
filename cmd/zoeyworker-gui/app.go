@@ -281,6 +281,15 @@ func (a *App) CheckPermissions() PermissionsInfo {
 	}
 }
 
+// RequestPermissions 请求权限（触发系统弹窗）
+func (a *App) RequestPermissions() PermissionsInfo {
+	// 请求辅助功能权限（会触发系统弹窗）
+	auto.RequestAccessibilityPermission()
+	
+	// 重新检查权限状态
+	return a.CheckPermissions()
+}
+
 // OpenAccessibilitySettings 打开辅助功能设置
 func (a *App) OpenAccessibilitySettings() {
 	auto.OpenAccessibilitySettings()
@@ -289,6 +298,11 @@ func (a *App) OpenAccessibilitySettings() {
 // OpenScreenRecordingSettings 打开屏幕录制设置
 func (a *App) OpenScreenRecordingSettings() {
 	auto.OpenScreenRecordingSettings()
+}
+
+// ResetPermissions 重置权限状态（需要用户重新授权）
+func (a *App) ResetPermissions() error {
+	return auto.ResetPermissions()
 }
 
 // ==================== OCR 插件管理 ====================

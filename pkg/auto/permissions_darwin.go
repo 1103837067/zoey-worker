@@ -73,6 +73,7 @@ void openScreenRecordingPreferences() {
 import "C"
 import (
 	"fmt"
+	"os/exec"
 )
 
 // PermissionStatus 权限状态
@@ -153,4 +154,31 @@ func PrintPermissionStatus() {
 	if !status.AllGranted {
 		fmt.Println(GetPermissionInstructions(status))
 	}
+}
+
+// ResetPermissions 重置权限状态（使用 tccutil）
+// 重置后需要用户重新授权，并重启应用
+func ResetPermissions() error {
+	// 使用 tccutil 重置辅助功能和屏幕录制权限
+	// Bundle ID: com.zoey.worker
+	bundleID := "com.zoey.worker"
+	
+	// 重置辅助功能权限
+	cmd1 := fmt.Sprintf("tccutil reset Accessibility %s", bundleID)
+	if err := runCommand(cmd1); err != nil {
+		return fmt.Errorf("重置辅助功能权限失败: %v", err)
+	}
+	
+	// 重置屏幕录制权限
+	cmd2 := fmt.Sprintf("tccutil reset ScreenCapture %s", bundleID)
+	if err := runCommand(cmd2); err != nil {
+		return fmt.Errorf("重置屏幕录制权限失败: %v", err)
+	}
+	
+	return nil
+}
+
+// runCommand 执行 shell 命令
+func runCommand(cmd string) error {
+	return exec.Command("sh", "-c", cmd).Run()
 }
