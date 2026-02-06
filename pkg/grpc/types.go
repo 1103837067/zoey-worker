@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/zoeyai/zoeyworker/pkg/cmdutil"
 )
 
 // ClientStatus 客户端状态
@@ -69,6 +71,7 @@ func detectPythonEnv() *Capabilities {
 
 		// 获取版本号
 		cmd := exec.Command(path, "--version")
+		cmdutil.HideWindow(cmd) // Windows 上隐藏 cmd 黑色窗口
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			continue

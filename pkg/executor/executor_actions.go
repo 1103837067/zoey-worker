@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/cmdutil"
 	"github.com/zoeyai/zoeyworker/pkg/plugin"
 	"github.com/zoeyai/zoeyworker/pkg/uia"
 	"github.com/zoeyai/zoeyworker/pkg/vision/ocr"
@@ -557,6 +558,7 @@ func (e *Executor) executeRunPython(payload map[string]interface{}) (interface{}
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, pythonInfo.Path, tmpFile)
+	cmdutil.HideWindow(cmd) // Windows 上隐藏 cmd 黑色窗口
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

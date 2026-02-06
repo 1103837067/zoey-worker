@@ -3,6 +3,8 @@ package auto
 import (
 	"os/exec"
 	"strings"
+
+	"github.com/zoeyai/zoeyworker/pkg/cmdutil"
 )
 
 // PythonInfo Python 环境信息
@@ -49,6 +51,7 @@ func DetectPython() *PythonInfo {
 // getPythonVersion 执行 python --version 获取版本号
 func getPythonVersion(pythonPath string) (string, error) {
 	cmd := exec.Command(pythonPath, "--version")
+	cmdutil.HideWindow(cmd) // Windows 上隐藏 cmd 黑色窗口
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", err

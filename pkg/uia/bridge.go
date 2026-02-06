@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/zoeyai/zoeyworker/pkg/cmdutil"
 )
 
 // ElementInfo represents a UI element
@@ -138,6 +140,7 @@ func runPythonScript(script string) (string, error) {
 	}
 
 	cmd := exec.Command(pythonPath, "-c", script)
+	cmdutil.HideWindow(cmd) // Windows 上隐藏 cmd 黑色窗口
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("python error: %s\noutput: %s", err, string(output))
