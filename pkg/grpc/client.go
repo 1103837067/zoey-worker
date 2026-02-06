@@ -377,6 +377,7 @@ func (c *Client) doConnect() error {
 	c.isConnected = true
 	c.stopCh = make(chan struct{})
 	c.outgoing = make(chan *WsWorkerMessage, 100)
+	c.wg = sync.WaitGroup{} // 重置 WaitGroup，避免旧的计数器干扰
 	c.mu.Unlock()
 
 	c.log("INFO", fmt.Sprintf("Connected as %s (%s)", c.agentName, c.agentID))
@@ -634,10 +635,8 @@ func (c *Client) Disconnect() error {
 	// 发送停止信号
 	close(c.stopCh)
 
-	// 等待 goroutine 结束
-	c.wg.Wait()
-
-	// 关闭连接
+	// 先关闭 WebSocket 连接，使阻塞的 ReadMessage 立即返回错误
+	// 这样 receiveLoop 才能退出，wg.Wait 才不会死锁
 	c.mu.Lock()
 	if c.conn != nil {
 		c.conn.WriteMessage(websocket.CloseMessage,
@@ -645,6 +644,13 @@ func (c *Client) Disconnect() error {
 		c.conn.Close()
 		c.conn = nil
 	}
+	c.mu.Unlock()
+
+	// 等待 goroutine 结束（连接已关闭，ReadMessage 会立即返回错误）
+	c.wg.Wait()
+
+	// 清理状态
+	c.mu.Lock()
 	c.agentID = ""
 	c.agentName = ""
 	c.mu.Unlock()
@@ -663,34 +669,32 @@ func (c *Client) attemptReconnect() {
 		return
 	}
 	c.isConnected = false
-	c.mu.Unlock()
+
+	// 关闭旧的停止信号，让 sendLoop/heartbeatLoop 退出
+	select {
+	case <-c.stopCh:
+		// 已经关闭了
+	default:
+		close(c.stopCh)
+	}
 
 	// 关闭旧连接
-	c.mu.Lock()
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
 	}
 	c.mu.Unlock()
 
+	// 注意：当前 goroutine 是从 receiveLoop（已退出）中启动的
+	// 等待剩余的 sendLoop 和 heartbeatLoop 退出
+	c.wg.Wait()
+
 	c.setStatus(StatusReconnecting)
 
 	// 指数退避重连
 	for i, delay := range c.config.ReconnectDelays {
-		select {
-		case <-c.stopCh:
-			return
-		default:
-		}
-
 		c.log("INFO", fmt.Sprintf("Reconnect attempt %d/%d in %ds...", i+1, len(c.config.ReconnectDelays), delay))
 		time.Sleep(time.Duration(delay) * time.Second)
-
-		select {
-		case <-c.stopCh:
-			return
-		default:
-		}
 
 		if err := c.doConnect(); err == nil {
 			c.log("INFO", "Reconnected successfully!")
