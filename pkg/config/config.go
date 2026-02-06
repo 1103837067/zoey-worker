@@ -31,7 +31,7 @@ type ConnectionConfig struct {
 // DefaultConnectionConfig 默认连接配置
 func DefaultConnectionConfig() *ConnectionConfig {
 	return &ConnectionConfig{
-		ServerURL:         "localhost:50051",
+		ServerURL:         "localhost:3001",
 		AccessKey:         "",
 		SecretKey:         "",
 		AutoConnect:       false,
