@@ -2,10 +2,14 @@ package executor
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"image/png"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
@@ -521,6 +525,79 @@ func (e *Executor) executeAssertText(payload map[string]interface{}) (interface{
 	return map[string]bool{"asserted": true, "exists": true}, nil
 }
 
+// executeRunPython 执行 Python 代码
+func (e *Executor) executeRunPython(payload map[string]interface{}) (interface{}, error) {
+	code, ok := payload["code"].(string)
+	if !ok || code == "" {
+		return nil, fmt.Errorf("缺少 code 参数")
+	}
+
+	// 超时时间（秒），默认 30 秒
+	timeoutSec := 30.0
+	if t, ok := payload["timeout"].(float64); ok && t > 0 {
+		timeoutSec = t
+	}
+
+	// 检测 Python 环境
+	pythonInfo := auto.DetectPython()
+	if !pythonInfo.Available {
+		return nil, fmt.Errorf("Python 环境未安装，请在 Agent 所在机器安装 Python 3")
+	}
+
+	// 创建临时文件写入代码
+	tmpDir := os.TempDir()
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("zoey_python_%d.py", time.Now().UnixNano()))
+	if err := os.WriteFile(tmpFile, []byte(code), 0644); err != nil {
+		return nil, fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	defer os.Remove(tmpFile)
+
+	// 使用 context 超时控制
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, pythonInfo.Path, tmpFile)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	startTime := time.Now()
+	err := cmd.Run()
+	durationMs := time.Since(startTime).Milliseconds()
+
+	exitCode := 0
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("Python 脚本执行超时（超过 %.0f 秒）", timeoutSec)
+		}
+		// 获取退出码
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return nil, fmt.Errorf("执行 Python 脚本失败: %w", err)
+		}
+	}
+
+	result := map[string]interface{}{
+		"stdout":      stdout.String(),
+		"stderr":      stderr.String(),
+		"exit_code":   exitCode,
+		"duration_ms": durationMs,
+	}
+
+	// 非零退出码视为失败
+	if exitCode != 0 {
+		errMsg := strings.TrimSpace(stderr.String())
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("Python 脚本退出码: %d", exitCode)
+		}
+		return result, fmt.Errorf("Python 脚本执行失败: %s", errMsg)
+	}
+
+	return result, nil
+}
+
 // ==================== 步骤分发 ====================
 
 // executeSingleStep 执行单个步骤（内部方法，不发送确认）
@@ -566,6 +643,8 @@ func (e *Executor) executeSingleStep(taskType string, payload map[string]interfa
 		return e.executeGetClipboard(payload)
 	case TaskTypeSetClipboard:
 		return e.executeSetClipboard(payload)
+	case TaskTypeRunPython:
+		return e.executeRunPython(payload)
 	default:
 		return nil, fmt.Errorf("未知的任务类型: %s", taskType)
 	}

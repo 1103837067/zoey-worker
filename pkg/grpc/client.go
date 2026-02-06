@@ -99,16 +99,24 @@ func (c *Client) doConnect() error {
 
 	// 调用 Connect RPC
 	sysInfo := GetSystemInfo()
+	pbSysInfo := &pb.SystemInfo{
+		Hostname:     sysInfo.Hostname,
+		Platform:     sysInfo.Platform,
+		OsVersion:    sysInfo.OSVersion,
+		AgentVersion: sysInfo.AgentVersion,
+		IpAddress:    sysInfo.IPAddress,
+	}
+	if sysInfo.Capabilities != nil {
+		pbSysInfo.Capabilities = &pb.Capabilities{
+			PythonAvailable: sysInfo.Capabilities.PythonAvailable,
+			PythonVersion:   sysInfo.Capabilities.PythonVersion,
+			PythonPath:      sysInfo.Capabilities.PythonPath,
+		}
+	}
 	req := &pb.ConnectRequest{
-		AccessKey: accessKey,
-		SecretKey: secretKey,
-		SystemInfo: &pb.SystemInfo{
-			Hostname:     sysInfo.Hostname,
-			Platform:     sysInfo.Platform,
-			OsVersion:    sysInfo.OSVersion,
-			AgentVersion: sysInfo.AgentVersion,
-			IpAddress:    sysInfo.IPAddress,
-		},
+		AccessKey:  accessKey,
+		SecretKey:  secretKey,
+		SystemInfo: pbSysInfo,
 	}
 
 	resp, err := c.client.Connect(context.Background(), req)

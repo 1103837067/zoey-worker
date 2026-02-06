@@ -35,6 +35,7 @@ const (
 	TaskTypeAssertText   = "assert_text"
 	TaskTypeGetClipboard = "get_clipboard"
 	TaskTypeSetClipboard = "set_clipboard"
+	TaskTypeRunPython    = "run_python"
 	// 批量执行类型
 	TaskTypeDebugCase   = "debug_case"
 	TaskTypeExecutePlan = "execute_plan" // 执行测试计划
@@ -235,6 +236,8 @@ func mapTaskTypeToActionType(taskType string) string {
 		return "wait"
 	case TaskTypeAssertImage, TaskTypeAssertText, TaskTypeImageExists, TaskTypeTextExists:
 		return "assert"
+	case TaskTypeRunPython:
+		return "script"
 	default:
 		return "other"
 	}

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -18,11 +19,19 @@ const (
 
 // SystemInfo 系统信息
 type SystemInfo struct {
-	Hostname     string `json:"hostname"`
-	Platform     string `json:"platform"`
-	OSVersion    string `json:"os_version"`
-	AgentVersion string `json:"agent_version"`
-	IPAddress    string `json:"ip_address"`
+	Hostname     string       `json:"hostname"`
+	Platform     string       `json:"platform"`
+	OSVersion    string       `json:"os_version"`
+	AgentVersion string       `json:"agent_version"`
+	IPAddress    string       `json:"ip_address"`
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
+}
+
+// Capabilities 环境能力信息
+type Capabilities struct {
+	PythonAvailable bool   `json:"python_available"`
+	PythonVersion   string `json:"python_version,omitempty"`
+	PythonPath      string `json:"python_path,omitempty"`
 }
 
 // GetSystemInfo 获取当前系统信息
@@ -34,13 +43,56 @@ func GetSystemInfo() *SystemInfo {
 		platform = "MACOS"
 	}
 
+	// 检测 Python 环境
+	pythonInfo := detectPythonEnv()
+
 	return &SystemInfo{
 		Hostname:     hostname,
 		Platform:     platform,
 		OSVersion:    runtime.GOOS + "/" + runtime.GOARCH,
 		AgentVersion: Version,
 		IPAddress:    getLocalIP(),
+		Capabilities: pythonInfo,
 	}
+}
+
+// detectPythonEnv 检测 Python 环境（内部实现，避免循环依赖 auto 包）
+func detectPythonEnv() *Capabilities {
+	caps := &Capabilities{}
+	candidates := []string{"python3", "python"}
+
+	for _, name := range candidates {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+
+		// 获取版本号
+		cmd := exec.Command(path, "--version")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			continue
+		}
+
+		line := strings.TrimSpace(string(output))
+		parts := strings.SplitN(line, " ", 2)
+		version := line
+		if len(parts) == 2 {
+			version = parts[1]
+		}
+
+		// 排除 Python 2.x
+		if strings.HasPrefix(version, "2.") {
+			continue
+		}
+
+		caps.PythonAvailable = true
+		caps.PythonVersion = version
+		caps.PythonPath = path
+		return caps
+	}
+
+	return caps
 }
 
 // getLocalIP 获取本地 IP 地址
