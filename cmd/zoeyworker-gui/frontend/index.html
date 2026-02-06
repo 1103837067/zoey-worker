@@ -255,6 +255,43 @@
             </div>
           </div>
           
+          <!-- Python 环境 -->
+          <div id="pythonSection" class="bg-card rounded-lg border shadow-sm p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-base font-semibold flex items-center gap-2">
+                <i data-lucide="terminal" class="w-5 h-5 text-muted-foreground"></i>
+                Python 环境
+              </h2>
+              <button id="refreshPythonBtn" class="p-2 hover:bg-muted rounded-md transition-colors" title="重新检测">
+                <i data-lucide="refresh-cw" class="w-4 h-4 text-muted-foreground"></i>
+              </button>
+            </div>
+            <div class="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-md bg-yellow-100 flex items-center justify-center">
+                  <i data-lucide="code" class="w-4 h-4 text-yellow-600"></i>
+                </div>
+                <div>
+                  <span id="pythonName" class="text-sm font-medium">Python</span>
+                  <p id="pythonPath" class="text-xs text-muted-foreground">检测中...</p>
+                </div>
+              </div>
+              <div id="pythonStatus" class="flex items-center gap-2">
+                <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                <span class="text-sm text-muted-foreground">检测中...</span>
+              </div>
+            </div>
+            <div id="pythonNotFound" class="hidden mt-3 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-md text-sm">
+              <div class="flex items-start gap-2">
+                <i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                <div>
+                  <p class="font-medium">未检测到 Python 3</p>
+                  <p class="mt-1 text-amber-700">部分功能（脚本执行、UI 自动化）需要 Python 3 环境。请安装后点击刷新按钮重新检测。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <!-- OCR 模块状态 -->
           <div id="ocrSection" class="bg-card rounded-lg border shadow-sm p-6">
             <div class="flex items-center justify-between mb-4">

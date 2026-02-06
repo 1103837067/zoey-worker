@@ -5,8 +5,15 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/zoeyai/zoeyworker/pkg/cmdutil"
+)
+
+// Python 检测缓存：启动时检测一次，后续直接使用
+var (
+	cachedPythonInfo *Capabilities
+	pythonDetectOnce sync.Once
 )
 
 // ClientStatus 客户端状态
@@ -36,7 +43,31 @@ type Capabilities struct {
 	PythonPath      string `json:"python_path,omitempty"`
 }
 
-// GetSystemInfo 获取当前系统信息
+// WarmupSystemInfo 预热系统信息检测（启动时调用，异步执行耗时操作）
+// 在后台完成 Python 检测等耗时操作，连接时直接使用缓存
+func WarmupSystemInfo() {
+	go func() {
+		pythonDetectOnce.Do(func() {
+			cachedPythonInfo = detectPythonEnv()
+		})
+	}()
+}
+
+// GetCachedPythonInfo 获取缓存的 Python 检测结果（不会触发重新检测）
+func GetCachedPythonInfo() *Capabilities {
+	pythonDetectOnce.Do(func() {
+		cachedPythonInfo = detectPythonEnv()
+	})
+	return cachedPythonInfo
+}
+
+// RefreshPythonInfo 强制重新检测 Python 环境并更新缓存
+func RefreshPythonInfo() *Capabilities {
+	cachedPythonInfo = detectPythonEnv()
+	return cachedPythonInfo
+}
+
+// GetSystemInfo 获取当前系统信息（使用缓存的 Python 检测结果）
 func GetSystemInfo() *SystemInfo {
 	hostname, _ := os.Hostname()
 
@@ -45,8 +76,10 @@ func GetSystemInfo() *SystemInfo {
 		platform = "MACOS"
 	}
 
-	// 检测 Python 环境
-	pythonInfo := detectPythonEnv()
+	// 使用缓存的 Python 检测结果（如果 Warmup 还没完成，这里会同步等待）
+	pythonDetectOnce.Do(func() {
+		cachedPythonInfo = detectPythonEnv()
+	})
 
 	return &SystemInfo{
 		Hostname:     hostname,
@@ -54,7 +87,7 @@ func GetSystemInfo() *SystemInfo {
 		OSVersion:    runtime.GOOS + "/" + runtime.GOARCH,
 		AgentVersion: Version,
 		IPAddress:    getLocalIP(),
-		Capabilities: pythonInfo,
+		Capabilities: cachedPythonInfo,
 	}
 }
 

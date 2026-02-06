@@ -56,6 +56,8 @@ const App = {
   OpenAccessibilitySettings: () => callBackend(`${SERVICE}.OpenAccessibilitySettings`),
   OpenScreenRecordingSettings: () => callBackend(`${SERVICE}.OpenScreenRecordingSettings`),
   ResetPermissions: () => callBackend(`${SERVICE}.ResetPermissions`),
+  GetPythonInfo: () => callBackend(`${SERVICE}.GetPythonInfo`),
+  RefreshPythonInfo: () => callBackend(`${SERVICE}.RefreshPythonInfo`),
   GetOCRPluginStatus: () => callBackend(`${SERVICE}.GetOCRPluginStatus`),
   InstallOCRPlugin: () => callBackend(`${SERVICE}.InstallOCRPlugin`),
   UninstallOCRPlugin: () => callBackend(`${SERVICE}.UninstallOCRPlugin`),
@@ -1030,6 +1032,73 @@ window.selectDebugHistory = function(idx) {
   }
 }
 
+// ========== Python 环境检测 ==========
+
+async function checkPythonInfo() {
+  try {
+    const info = await App.GetPythonInfo()
+    updatePythonUI(info)
+    return info
+  } catch (e) {
+    console.error('检查 Python 环境失败:', e)
+    updatePythonUI({ available: false, version: '', path: '' })
+    return null
+  }
+}
+
+function updatePythonUI(info) {
+  const statusEl = $('pythonStatus')
+  const nameEl = $('pythonName')
+  const pathEl = $('pythonPath')
+  const notFoundEl = $('pythonNotFound')
+  
+  if (info && info.available) {
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
+        <span class="text-sm text-emerald-600">v${info.version}</span>
+      `
+    }
+    if (nameEl) nameEl.textContent = `Python ${info.version}`
+    if (pathEl) pathEl.textContent = info.path
+    notFoundEl?.classList.add('hidden')
+  } else {
+    if (statusEl) {
+      statusEl.innerHTML = `
+        <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+        <span class="text-sm text-red-600">未安装</span>
+      `
+    }
+    if (nameEl) nameEl.textContent = 'Python 3'
+    if (pathEl) pathEl.textContent = '未检测到 Python 3 环境'
+    notFoundEl?.classList.remove('hidden')
+  }
+  
+  lucide.createIcons()
+}
+
+function bindPythonEvents() {
+  const refreshBtn = $('refreshPythonBtn')
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true
+      refreshBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>'
+      lucide.createIcons()
+      
+      try {
+        const info = await App.RefreshPythonInfo()
+        updatePythonUI(info)
+      } catch (e) {
+        console.error('刷新 Python 检测失败:', e)
+      }
+      
+      refreshBtn.disabled = false
+      refreshBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>'
+      lucide.createIcons()
+    })
+  }
+}
+
 // ========== OCR 模块管理 ==========
 
 // 检查 OCR 状态
@@ -1155,12 +1224,16 @@ function bindOCREvents() {
 document.addEventListener('DOMContentLoaded', async () => {
   init()
   bindPermissionEvents()
+  bindPythonEvents()
   bindOCREvents()
   setupBackgroundEvents()
   setupDebugPolling() // 使用轮询方式获取调试数据
   
   // 检查权限并在需要时显示引导弹窗
   await checkPermissions(true)
+  
+  // 检查 Python 环境（使用启动时预热的缓存）
+  await checkPythonInfo()
   
   // 检查 OCR 状态
   await checkOCRStatus()

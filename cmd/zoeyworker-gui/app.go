@@ -36,6 +36,9 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	a.grpcClient = grpc.NewClient(nil)
 	a.executor = executor.NewExecutor(a.grpcClient)
 
+	// 预热系统信息（异步检测 Python 环境等耗时操作）
+	grpc.WarmupSystemInfo()
+
 	// 设置 OCR 插件
 	auto.SetOCRPlugin(plugin.GetOCRPlugin())
 
@@ -303,6 +306,41 @@ func (a *App) OpenScreenRecordingSettings() {
 // ResetPermissions 重置权限状态（需要用户重新授权）
 func (a *App) ResetPermissions() error {
 	return auto.ResetPermissions()
+}
+
+// ==================== Python 环境检测 ====================
+
+// PythonInfo Python 环境信息
+type PythonInfo struct {
+	Available bool   `json:"available"`
+	Version   string `json:"version"`
+	Path      string `json:"path"`
+}
+
+// GetPythonInfo 获取 Python 环境信息（使用缓存）
+func (a *App) GetPythonInfo() PythonInfo {
+	caps := grpc.GetCachedPythonInfo()
+	if caps == nil {
+		return PythonInfo{}
+	}
+	return PythonInfo{
+		Available: caps.PythonAvailable,
+		Version:   caps.PythonVersion,
+		Path:      caps.PythonPath,
+	}
+}
+
+// RefreshPythonInfo 重新检测 Python 环境（用户手动刷新）
+func (a *App) RefreshPythonInfo() PythonInfo {
+	caps := grpc.RefreshPythonInfo()
+	if caps == nil {
+		return PythonInfo{}
+	}
+	return PythonInfo{
+		Available: caps.PythonAvailable,
+		Version:   caps.PythonVersion,
+		Path:      caps.PythonPath,
+	}
 }
 
 // ==================== OCR 插件管理 ====================
