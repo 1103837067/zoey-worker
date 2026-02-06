@@ -172,6 +172,11 @@ type StepExecutionResult struct {
 	// 输入内容（仅 input 操作）
 	InputText string `json:"inputText,omitempty"`
 
+	// 脚本执行输出（仅 script/run_python 操作）
+	Stdout   string `json:"stdout,omitempty"`   // 标准输出
+	Stderr   string `json:"stderr,omitempty"`   // 标准错误
+	ExitCode int    `json:"exitCode,omitempty"` // 退出码
+
 	// 执行耗时（毫秒）
 	DurationMs int64 `json:"durationMs"`
 
@@ -446,7 +451,15 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		taskErr := classifyError(err)
 		log("ERROR", fmt.Sprintf("[Task:%s] 执行失败 status=%s reason=%s", taskID, taskErr.Status, taskErr.Reason))
 		log("DEBUG", fmt.Sprintf("[Task:%s] 详细错误: %s", taskID, taskErr.Message))
-		e.sendTaskResultWithError(taskID, taskErr, nil, startTime)
+
+		// 即使失败也要把 result 数据（stdout/stderr 等）发送回去，供前端展示 log
+		var resultJSONForError string
+		if result != nil {
+			if rj, jsonErr := json.Marshal(result); jsonErr == nil {
+				resultJSONForError = string(rj)
+			}
+		}
+		e.sendTaskResultWithError(taskID, taskErr, nil, startTime, resultJSONForError)
 	} else {
 		// 尝试提取匹配位置
 		var matchLoc *pb.MatchLocation

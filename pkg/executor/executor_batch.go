@@ -367,6 +367,23 @@ func (e *Executor) executeStepWithScreenshots(
 		DurationMs:       durationMs,
 	}
 
+	// 提取脚本执行输出（Python 等）
+	if actionResult.Data != nil {
+		if dataMap, ok := actionResult.Data.(map[string]interface{}); ok {
+			if stdout, ok := dataMap["stdout"].(string); ok {
+				stepResult.Stdout = stdout
+			}
+			if stderr, ok := dataMap["stderr"].(string); ok {
+				stepResult.Stderr = stderr
+			}
+			if exitCode, ok := dataMap["exit_code"].(int); ok {
+				stepResult.ExitCode = exitCode
+			} else if exitCode, ok := dataMap["exit_code"].(float64); ok {
+				stepResult.ExitCode = int(exitCode)
+			}
+		}
+	}
+
 	if !actionResult.Success {
 		taskErr := classifyError(actionResult.Error)
 		stepResult.Status = mapTaskStatusToString(taskErr.Status)
@@ -527,9 +544,16 @@ func (e *Executor) sendTaskResultSuccess(taskID string, resultJSON string, match
 }
 
 // sendTaskResultWithError 发送失败结果
-func (e *Executor) sendTaskResultWithError(taskID string, taskErr *TaskError, matchLoc *pb.MatchLocation, startTime time.Time) {
+// 可选的 resultJSON 参数允许在失败时也附带执行数据（如 Python 的 stdout/stderr）
+func (e *Executor) sendTaskResultWithError(taskID string, taskErr *TaskError, matchLoc *pb.MatchLocation, startTime time.Time, resultJSON ...string) {
 	if e.client == nil {
 		return
+	}
+
+	// 使用传入的 resultJSON 或默认空对象
+	rj := "{}"
+	if len(resultJSON) > 0 && resultJSON[0] != "" {
+		rj = resultJSON[0]
 	}
 
 	msg := &pb.WorkerMessage{
@@ -541,7 +565,7 @@ func (e *Executor) sendTaskResultWithError(taskID string, taskErr *TaskError, ma
 				Success:       false,
 				Status:        taskErr.Status,
 				Message:       taskErr.Message,
-				ResultJson:    "{}",
+				ResultJson:    rj,
 				DurationMs:    time.Since(startTime).Milliseconds(),
 				FailureReason: taskErr.Reason,
 				MatchLocation: matchLoc,
