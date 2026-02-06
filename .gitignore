@@ -37,7 +37,7 @@ Thumbs.db
 
 # Build
 dist/
-build/bin/
+build/
 
 # Models (downloaded separately)
 models/
