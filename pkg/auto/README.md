@@ -2,44 +2,54 @@
 
 高级 UI 自动化模块，整合图像识别、OCR、鼠标键盘操作。
 
-## 核心功能
+## 包结构
 
-| 分类         | 功能                               |
-| ------------ | ---------------------------------- |
-| **截图**     | 全屏截图、区域截图、窗口截图       |
-| **图像操作** | 点击图像、等待图像、检查图像存在   |
-| **文字操作** | 点击文字、等待文字、检查文字存在   |
-| **鼠标**     | 移动、点击、双击、右键、拖拽、滚动 |
-| **键盘**     | 输入文字、按键、组合键             |
-| **窗口**     | 激活、最小化、最大化、获取列表     |
-| **进程**     | 获取列表、查找、终止               |
-| **网格点击** | 将区域分割成网格并点击指定格子     |
+```
+pkg/auto/              # 共享类型（Options, Point, Region）+ 坐标缩放
+  screen/              # 截图、编码、匹配辅助
+  input/               # 鼠标、键盘、剪贴板
+  image/               # 图像匹配（模板、SIFT）
+  text/                # OCR 文字识别与匹配
+  grid/                # 网格计算与网格点击
+  window/              # 窗口管理（获取、激活、截图）
+
+pkg/process/           # 进程管理（独立包）
+pkg/permissions/       # 系统权限检查（独立包）
+pkg/python/            # Python 环境检测（独立包）
+```
 
 ## 快速使用
 
 ```go
-import "github.com/zoeyai/zoeyworker/pkg/auto"
+import (
+    "github.com/zoeyai/zoeyworker/pkg/auto"
+    "github.com/zoeyai/zoeyworker/pkg/auto/image"
+    "github.com/zoeyai/zoeyworker/pkg/auto/input"
+    "github.com/zoeyai/zoeyworker/pkg/auto/screen"
+    "github.com/zoeyai/zoeyworker/pkg/auto/text"
+    "github.com/zoeyai/zoeyworker/pkg/auto/window"
+)
 
 // 点击图像
-auto.ClickImage("login_button.png")
+image.ClickImage("login_button.png")
 
 // 等待图像出现并点击
-auto.ClickImage("submit.png", auto.WithTimeout(10*time.Second))
+image.ClickImage("submit.png", auto.WithTimeout(10*time.Second))
 
 // 点击文字
-auto.ClickText("确定")
+text.ClickText("确定")
 
 // 组合操作
-auto.ActivateWindow("Chrome")
-auto.ClickImage("search_box.png")
-auto.TypeText("hello world")
-auto.KeyTap("enter")
+window.ActivateWindow("Chrome")
+image.ClickImage("search_box.png")
+input.TypeText("hello world")
+input.KeyTap("enter")
 ```
 
 ## 配置选项
 
 ```go
-auto.ClickImage("button.png",
+image.ClickImage("button.png",
     auto.WithTimeout(10*time.Second),    // 超时时间
     auto.WithThreshold(0.9),             // 匹配阈值
     auto.WithClickOffset(10, 5),         // 点击偏移
@@ -51,53 +61,41 @@ auto.ClickImage("button.png",
 
 ## 网格点击
 
-将矩形区域分割成网格，点击指定格子：
-
 ```go
-// 格式: rows.cols.row.col
-// 例如 "2.2.1.1" 表示 2x2 网格的第1行第1列
+import "github.com/zoeyai/zoeyworker/pkg/auto/grid"
 
+// 格式: rows.cols.row.col
 rect := auto.Region{X: 100, Y: 100, Width: 200, Height: 200}
-auto.ClickGrid(rect, "2.2.1.1")  // 点击左上角
+grid.ClickGrid(rect, "2.2.1.1")  // 点击左上角
 
 // 在窗口内按网格点击
-auto.ClickGridInWindow(pid, "3.3.2.2")  // 点击中心
+window.ClickGridInWindow(pid, "3.3.2.2")  // 点击中心
 ```
 
 ## 窗口操作
 
 ```go
+import "github.com/zoeyai/zoeyworker/pkg/auto/window"
+
 // 获取窗口列表
-windows, _ := auto.GetWindows()
-windows, _ := auto.GetWindows("Chrome")  // 按名称过滤
+windows, _ := window.GetWindows()
+windows, _ := window.GetWindows("Chrome")  // 按名称过滤
 
 // 激活窗口
-auto.ActivateWindow("Chrome")
-auto.BringWindowToFront(pid)
-
-// 窗口操作
-auto.MinimizeWindow(pid)
-auto.MaximizeWindow(pid)
-auto.CloseWindowByPID(pid)
+window.ActivateWindow("Chrome")
 
 // 等待窗口出现
-window, _ := auto.WaitForWindow("登录", auto.WithTimeout(10*time.Second))
+w, _ := window.WaitForWindow("登录", auto.WithTimeout(10*time.Second))
 ```
 
 ## 进程操作
 
 ```go
-// 获取所有进程
-processes, _ := auto.GetProcesses()
+import "github.com/zoeyai/zoeyworker/pkg/process"
 
-// 按名称查找
-processes, _ := auto.FindProcess("chrome")
-
-// 检查进程状态
-running := auto.IsProcessRunning(pid)
-
-// 终止进程
-auto.KillProcess(pid)
+processes, _ := process.GetProcesses()
+processes, _ := process.FindProcess("chrome")
+process.KillProcess(pid)
 ```
 
 ## 依赖

@@ -1,4 +1,5 @@
-package auto
+// Package process 提供进程管理功能
+package process
 
 import (
 	"fmt"
@@ -16,7 +17,6 @@ type ProcessInfo struct {
 }
 
 // GetProcesses 获取所有进程
-// 使用 gopsutil 获取完整进程信息（跨平台）
 func GetProcesses() ([]ProcessInfo, error) {
 	pids, err := process.Pids()
 	if err != nil {
@@ -64,7 +64,6 @@ func FindProcess(name string) ([]ProcessInfo, error) {
 			continue
 		}
 
-		// 部分匹配（不区分大小写）
 		if strings.Contains(strings.ToLower(procName), name) {
 			exe, _ := proc.Exe()
 			matches = append(matches, ProcessInfo{
@@ -96,7 +95,6 @@ func GetProcessByPID(pid int) (*ProcessInfo, error) {
 }
 
 // IsProcessRunning 检查进程是否正在运行
-// 使用 gopsutil 检查（跨平台一致性）
 func IsProcessRunning(pid int) bool {
 	proc, err := process.NewProcess(int32(pid))
 	if err != nil {
@@ -110,13 +108,11 @@ func IsProcessRunning(pid int) bool {
 }
 
 // KillProcess 终止进程
-// 使用 robotgo 的封装（跨平台）
 func KillProcess(pid int) error {
 	return robotgo.Kill(pid)
 }
 
 // FindPIDsByName 按名称查找进程 PID
-// 精确匹配进程名（用于窗口操作，robotgo 使用）
 func FindPIDsByName(name string) ([]int, error) {
 	pids, err := robotgo.FindIds(name)
 	if err != nil {

@@ -1,12 +1,13 @@
 //go:build !darwin
 
-package auto
+// Package permissions 提供系统权限检查功能
+package permissions
 
 // PermissionStatus 权限状态
 type PermissionStatus struct {
-	Accessibility    bool `json:"accessibility"`
-	ScreenRecording  bool `json:"screen_recording"`
-	AllGranted       bool `json:"all_granted"`
+	Accessibility   bool `json:"accessibility"`
+	ScreenRecording bool `json:"screen_recording"`
+	AllGranted      bool `json:"all_granted"`
 }
 
 // CheckPermissions 检查所需权限
@@ -25,14 +26,10 @@ func RequestAccessibilityPermission() bool {
 }
 
 // OpenAccessibilitySettings 打开辅助功能设置页面
-func OpenAccessibilitySettings() {
-	// 非 macOS 不需要
-}
+func OpenAccessibilitySettings() {}
 
 // OpenScreenRecordingSettings 打开屏幕录制设置页面
-func OpenScreenRecordingSettings() {
-	// 非 macOS 不需要
-}
+func OpenScreenRecordingSettings() {}
 
 // GetPermissionInstructions 获取权限说明
 func GetPermissionInstructions(status *PermissionStatus) string {
@@ -45,12 +42,9 @@ func EnsurePermissions() (bool, string) {
 }
 
 // PrintPermissionStatus 打印权限状态
-func PrintPermissionStatus() {
-	// 非 macOS 不需要打印
-}
+func PrintPermissionStatus() {}
 
 // ResetPermissions 重置权限状态
 func ResetPermissions() error {
-	// 非 macOS 不需要重置权限
 	return nil
 }

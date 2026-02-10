@@ -1,12 +1,14 @@
 //go:build windows
 
-package auto
+package window
 
 import (
 	"fmt"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/zoeyai/zoeyworker/pkg/auto"
 )
 
 var (
@@ -32,20 +34,17 @@ var (
 )
 
 const (
-	// GWL_STYLE 和 GWL_EXSTYLE 是负数，需要特殊处理
-	// 在 64 位系统上，-16 的 uintptr 表示为 0xFFFFFFFFFFFFFFF0
-	// 在 32 位系统上，-16 的 uintptr 表示为 0xFFFFFFF0
-	GWL_STYLE   = ^uintptr(15)  // -16
-	GWL_EXSTYLE = ^uintptr(19)  // -20
+	gwlStyle   = ^uintptr(15) // -16
+	gwlExStyle = ^uintptr(19) // -20
 
-	WS_VISIBLE       uintptr = 0x10000000
-	WS_EX_TOOLWINDOW uintptr = 0x00000080
-	WS_EX_APPWINDOW  uintptr = 0x00040000
+	wsVisible       uintptr = 0x10000000
+	wsExToolWindow  uintptr = 0x00000080
+	wsExAppWindow   uintptr = 0x00040000
 
-	PROCESS_QUERY_INFORMATION = 0x0400
-	PROCESS_VM_READ           = 0x0010
-	SW_RESTORE                = 9
-	SW_SHOW                   = 5
+	processQueryInformation = 0x0400
+	processVMRead           = 0x0010
+	swRestore               = 9
+	swShow                  = 5
 )
 
 // RECT Windows 矩形结构
@@ -65,7 +64,6 @@ func getWindowsPlatform(filter ...string) ([]WindowInfo, error) {
 }
 
 // getWindowsWindows 使用 Windows 原生 API 获取窗口列表
-// 正确处理 UTF-16 编码，解决中文乱码问题
 func getWindowsWindows(filter ...string) ([]WindowInfo, error) {
 	data := &windowEnumData{
 		windows: make([]WindowInfo, 0, 64),
@@ -74,107 +72,85 @@ func getWindowsWindows(filter ...string) ([]WindowInfo, error) {
 		data.filter = strings.ToLower(filter[0])
 	}
 
-	// EnumWindows 枚举所有顶级窗口
-	callback := syscall.NewCallback(func(hwnd syscall.Handle, lParam uintptr) uintptr {
-		enumWindowsCallback(hwnd, lParam)
-		return 1 // 继续枚举
+	callback := syscall.NewCallback(func(hwnd syscall.Handle, _ uintptr) uintptr {
+		// 直接通过闭包捕获 data，避免 unsafe.Pointer(uintptr) 转换
+		ret, _, _ := procIsWindowVisible.Call(uintptr(hwnd))
+		if ret == 0 {
+			return 1
+		}
+
+		style, _, _ := procGetWindowLongW.Call(uintptr(hwnd), gwlStyle)
+		exStyle, _, _ := procGetWindowLongW.Call(uintptr(hwnd), gwlExStyle)
+
+		if style&wsVisible == 0 {
+			return 1
+		}
+
+		if exStyle&wsExToolWindow != 0 && exStyle&wsExAppWindow == 0 {
+			return 1
+		}
+
+		length, _, _ := procGetWindowTextLengthW.Call(uintptr(hwnd))
+		if length == 0 {
+			return 1
+		}
+
+		buf := make([]uint16, length+1)
+		procGetWindowTextW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(length+1))
+		title := syscall.UTF16ToString(buf)
+		if title == "" {
+			return 1
+		}
+
+		var pid uint32
+		procGetWindowThreadProcessId.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&pid)))
+		if pid == 0 {
+			return 1
+		}
+
+		ownerName := getProcessName(pid)
+
+		var rect RECT
+		procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rect)))
+
+		width := int(rect.Right - rect.Left)
+		height := int(rect.Bottom - rect.Top)
+
+		if width < 50 || height < 50 {
+			return 1
+		}
+
+		if data.filter != "" {
+			titleLower := strings.ToLower(title)
+			ownerLower := strings.ToLower(ownerName)
+			if !strings.Contains(titleLower, data.filter) && !strings.Contains(ownerLower, data.filter) {
+				return 1
+			}
+		}
+
+		data.windows = append(data.windows, WindowInfo{
+			PID:       int(pid),
+			Title:     title,
+			OwnerName: ownerName,
+			Bounds: auto.Region{
+				X:      int(rect.Left),
+				Y:      int(rect.Top),
+				Width:  width,
+				Height: height,
+			},
+		})
+		return 1
 	})
 
-	procEnumWindows.Call(callback, uintptr(unsafe.Pointer(data)))
+	procEnumWindows.Call(callback, 0)
 
 	return data.windows, nil
 }
 
-// enumWindowsCallback EnumWindows 回调函数
-func enumWindowsCallback(hwnd syscall.Handle, lParam uintptr) {
-	data := (*windowEnumData)(unsafe.Pointer(lParam))
-
-	// 检查窗口是否可见
-	ret, _, _ := procIsWindowVisible.Call(uintptr(hwnd))
-	if ret == 0 {
-		return
-	}
-
-	// 获取窗口样式，过滤工具窗口等
-	style, _, _ := procGetWindowLongW.Call(uintptr(hwnd), GWL_STYLE)
-	exStyle, _, _ := procGetWindowLongW.Call(uintptr(hwnd), GWL_EXSTYLE)
-
-	// 跳过不可见窗口
-	if style&WS_VISIBLE == 0 {
-		return
-	}
-
-	// 跳过工具窗口（除非它有 APPWINDOW 样式）
-	if exStyle&WS_EX_TOOLWINDOW != 0 && exStyle&WS_EX_APPWINDOW == 0 {
-		return
-	}
-
-	// 获取窗口标题长度
-	length, _, _ := procGetWindowTextLengthW.Call(uintptr(hwnd))
-	if length == 0 {
-		return
-	}
-
-	// 获取窗口标题 (UTF-16)
-	buf := make([]uint16, length+1)
-	procGetWindowTextW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(length+1))
-
-	// UTF-16 转 UTF-8
-	title := syscall.UTF16ToString(buf)
-	if title == "" {
-		return
-	}
-
-	// 获取进程 ID
-	var pid uint32
-	procGetWindowThreadProcessId.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&pid)))
-	if pid == 0 {
-		return
-	}
-
-	// 获取进程名称
-	ownerName := getProcessName(pid)
-
-	// 获取窗口边界
-	var rect RECT
-	procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rect)))
-
-	// 计算宽高
-	width := int(rect.Right - rect.Left)
-	height := int(rect.Bottom - rect.Top)
-
-	// 跳过太小的窗口
-	if width < 50 || height < 50 {
-		return
-	}
-
-	// 过滤检查
-	if data.filter != "" {
-		titleLower := strings.ToLower(title)
-		ownerLower := strings.ToLower(ownerName)
-		if !strings.Contains(titleLower, data.filter) && !strings.Contains(ownerLower, data.filter) {
-			return
-		}
-	}
-
-	data.windows = append(data.windows, WindowInfo{
-		PID:       int(pid),
-		Title:     title,
-		OwnerName: ownerName,
-		Bounds: Region{
-			X:      int(rect.Left),
-			Y:      int(rect.Top),
-			Width:  width,
-			Height: height,
-		},
-	})
-}
-
 // getProcessName 通过 PID 获取进程名称
 func getProcessName(pid uint32) string {
-	// 打开进程
 	handle, _, _ := procOpenProcess.Call(
-		uintptr(PROCESS_QUERY_INFORMATION|PROCESS_VM_READ),
+		uintptr(processQueryInformation|processVMRead),
 		0,
 		uintptr(pid),
 	)
@@ -183,8 +159,7 @@ func getProcessName(pid uint32) string {
 	}
 	defer procCloseHandle.Call(handle)
 
-	// 获取模块名称 (UTF-16)
-	buf := make([]uint16, 260) // MAX_PATH
+	buf := make([]uint16, 260)
 	ret, _, _ := procGetModuleBaseNameW.Call(
 		handle,
 		0,
@@ -195,10 +170,7 @@ func getProcessName(pid uint32) string {
 		return ""
 	}
 
-	// UTF-16 转 UTF-8
 	name := syscall.UTF16ToString(buf)
-
-	// 去掉 .exe 后缀
 	if strings.HasSuffix(strings.ToLower(name), ".exe") {
 		name = name[:len(name)-4]
 	}
@@ -216,13 +188,11 @@ func activateWindowPlatform(name string) error {
 		return fmt.Errorf("未找到窗口: %s", name)
 	}
 
-	// 通过标题找到窗口句柄并激活
 	return activateWindowByTitleInternal(windows[0].Title)
 }
 
 // activateWindowByPIDPlatform 通过 PID 激活窗口（Windows 实现）
 func activateWindowByPIDPlatform(pid int) error {
-	// 遍历所有窗口找到匹配 PID 的
 	var targetHwnd syscall.Handle
 
 	callback := syscall.NewCallback(func(hwnd syscall.Handle, lParam uintptr) uintptr {
@@ -232,10 +202,10 @@ func activateWindowByPIDPlatform(pid int) error {
 			ret, _, _ := procIsWindowVisible.Call(uintptr(hwnd))
 			if ret != 0 {
 				targetHwnd = hwnd
-				return 0 // 停止枚举
+				return 0
 			}
 		}
-		return 1 // 继续枚举
+		return 1
 	})
 
 	procEnumWindows.Call(callback, 0)
@@ -247,7 +217,7 @@ func activateWindowByPIDPlatform(pid int) error {
 	return activateWindowByHandle(targetHwnd)
 }
 
-// activateWindowByTitlePlatform 通过标题激活窗口（Windows 实现）
+// activateWindowByTitlePlatform 通过应用名和窗口标题激活特定窗口
 func activateWindowByTitlePlatform(appName, windowTitle string) error {
 	windows, err := getWindowsWindows()
 	if err != nil {
@@ -257,7 +227,6 @@ func activateWindowByTitlePlatform(appName, windowTitle string) error {
 	appNameLower := strings.ToLower(appName)
 	windowTitleLower := strings.ToLower(windowTitle)
 
-	// 优先级 1: 进程名 + 窗口标题都匹配
 	for _, w := range windows {
 		ownerMatch := strings.Contains(strings.ToLower(w.OwnerName), appNameLower)
 		titleMatch := strings.Contains(strings.ToLower(w.Title), windowTitleLower)
@@ -266,14 +235,12 @@ func activateWindowByTitlePlatform(appName, windowTitle string) error {
 		}
 	}
 
-	// 优先级 2: 只匹配进程名
 	for _, w := range windows {
 		if strings.Contains(strings.ToLower(w.OwnerName), appNameLower) {
 			return activateWindowByTitleInternal(w.Title)
 		}
 	}
 
-	// 优先级 3: 只匹配窗口标题
 	for _, w := range windows {
 		if strings.Contains(strings.ToLower(w.Title), windowTitleLower) {
 			return activateWindowByTitleInternal(w.Title)
@@ -300,9 +267,9 @@ func activateWindowByTitleInternal(title string) error {
 
 		if strings.ToLower(windowTitle) == titleLower || strings.Contains(strings.ToLower(windowTitle), titleLower) {
 			targetHwnd = hwnd
-			return 0 // 停止枚举
+			return 0
 		}
-		return 1 // 继续枚举
+		return 1
 	})
 
 	procEnumWindows.Call(callback, 0)
@@ -316,20 +283,15 @@ func activateWindowByTitleInternal(title string) error {
 
 // activateWindowByHandle 通过窗口句柄激活窗口
 func activateWindowByHandle(hwnd syscall.Handle) error {
-	// 获取当前前台窗口的线程 ID
 	foregroundHwnd, _, _ := procGetForegroundWindow.Call()
 	var foregroundThreadId uintptr
 	if foregroundHwnd != 0 {
 		foregroundThreadId, _, _ = procGetWindowThreadProcessId.Call(foregroundHwnd, 0)
 	}
 
-	// 获取当前线程 ID
 	currentThreadId, _, _ := procGetCurrentThreadId.Call()
-
-	// 获取目标窗口的线程 ID
 	targetThreadId, _, _ := procGetWindowThreadProcessId.Call(uintptr(hwnd), 0)
 
-	// 附加输入线程以允许 SetForegroundWindow
 	if foregroundThreadId != 0 && foregroundThreadId != currentThreadId {
 		procAttachThreadInput.Call(currentThreadId, foregroundThreadId, 1)
 		defer procAttachThreadInput.Call(currentThreadId, foregroundThreadId, 0)
@@ -340,13 +302,9 @@ func activateWindowByHandle(hwnd syscall.Handle) error {
 		defer procAttachThreadInput.Call(currentThreadId, targetThreadId, 0)
 	}
 
-	// 恢复窗口（如果最小化）
-	procShowWindow.Call(uintptr(hwnd), SW_RESTORE)
-
-	// 将窗口置顶
+	procShowWindow.Call(uintptr(hwnd), swRestore)
 	procBringWindowToTop.Call(uintptr(hwnd))
 
-	// 设置为前台窗口
 	ret, _, _ := procSetForegroundWindow.Call(uintptr(hwnd))
 	if ret == 0 {
 		return fmt.Errorf("SetForegroundWindow 失败")

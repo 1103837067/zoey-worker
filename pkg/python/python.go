@@ -1,4 +1,5 @@
-package auto
+// Package python 提供 Python 环境检测功能
+package python
 
 import (
 	"os/exec"
@@ -15,11 +16,9 @@ type PythonInfo struct {
 }
 
 // DetectPython 检测 Python 环境
-// 按优先级检测 python3 / python，返回环境信息
 func DetectPython() *PythonInfo {
 	info := &PythonInfo{}
 
-	// 按优先级尝试检测
 	candidates := []string{"python3", "python"}
 
 	for _, name := range candidates {
@@ -28,13 +27,11 @@ func DetectPython() *PythonInfo {
 			continue
 		}
 
-		// 获取版本号
 		version, err := getPythonVersion(path)
 		if err != nil {
 			continue
 		}
 
-		// 确保不是 Python 2.x
 		if strings.HasPrefix(version, "2.") {
 			continue
 		}
@@ -51,13 +48,12 @@ func DetectPython() *PythonInfo {
 // getPythonVersion 执行 python --version 获取版本号
 func getPythonVersion(pythonPath string) (string, error) {
 	cmd := exec.Command(pythonPath, "--version")
-	cmdutil.HideWindow(cmd) // Windows 上隐藏 cmd 黑色窗口
+	cmdutil.HideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", err
 	}
 
-	// 输出格式: "Python 3.11.5\n"
 	line := strings.TrimSpace(string(output))
 	parts := strings.SplitN(line, " ", 2)
 	if len(parts) == 2 {

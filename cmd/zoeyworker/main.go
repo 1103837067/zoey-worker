@@ -8,10 +8,10 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
+	"github.com/zoeyai/zoeyworker/pkg/permissions"
 )
 
 // 版本信息 (可通过 ldflags 注入)
@@ -182,7 +182,7 @@ func printHelp() {
 // checkMacOSPermissions 检查 macOS 权限
 func checkMacOSPermissions() {
 	fmt.Println("[INFO] 正在检查 macOS 权限...")
-	status := auto.CheckPermissions()
+	status := permissions.CheckPermissions()
 	
 	fmt.Printf("[INFO] 辅助功能权限: %v\n", status.Accessibility)
 	fmt.Printf("[INFO] 屏幕录制权限: %v\n", status.ScreenRecording)

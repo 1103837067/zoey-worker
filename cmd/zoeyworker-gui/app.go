@@ -7,10 +7,11 @@ import (
 	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/auto/text"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
+	"github.com/zoeyai/zoeyworker/pkg/permissions"
 	"github.com/zoeyai/zoeyworker/pkg/plugin"
 )
 
@@ -40,7 +41,7 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	grpc.WarmupSystemInfo()
 
 	// 设置 OCR 插件
-	auto.SetOCRPlugin(plugin.GetOCRPlugin())
+	text.SetOCRPlugin(plugin.GetOCRPlugin())
 
 	// 调试数据通过轮询 GetDebugData 方法获取，不再使用事件
 
@@ -271,7 +272,7 @@ type PermissionsInfo struct {
 
 // CheckPermissions 检查系统权限
 func (a *App) CheckPermissions() PermissionsInfo {
-	status := auto.CheckPermissions()
+	status := permissions.CheckPermissions()
 	if status == nil {
 		return PermissionsInfo{
 			Accessibility:   true,
@@ -287,7 +288,7 @@ func (a *App) CheckPermissions() PermissionsInfo {
 // RequestPermissions 请求权限（触发系统弹窗）
 func (a *App) RequestPermissions() PermissionsInfo {
 	// 请求辅助功能权限（会触发系统弹窗）
-	auto.RequestAccessibilityPermission()
+	permissions.RequestAccessibilityPermission()
 	
 	// 重新检查权限状态
 	return a.CheckPermissions()
@@ -295,17 +296,17 @@ func (a *App) RequestPermissions() PermissionsInfo {
 
 // OpenAccessibilitySettings 打开辅助功能设置
 func (a *App) OpenAccessibilitySettings() {
-	auto.OpenAccessibilitySettings()
+	permissions.OpenAccessibilitySettings()
 }
 
 // OpenScreenRecordingSettings 打开屏幕录制设置
 func (a *App) OpenScreenRecordingSettings() {
-	auto.OpenScreenRecordingSettings()
+	permissions.OpenScreenRecordingSettings()
 }
 
 // ResetPermissions 重置权限状态（需要用户重新授权）
 func (a *App) ResetPermissions() error {
-	return auto.ResetPermissions()
+	return permissions.ResetPermissions()
 }
 
 // ==================== Python 环境检测 ====================

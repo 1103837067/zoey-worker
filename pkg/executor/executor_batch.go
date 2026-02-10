@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/auto/screen"
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
 )
 
@@ -336,7 +336,7 @@ func (e *Executor) executeStepWithScreenshots(
 	// 1. 执行前截图
 	var screenshotBefore string
 	if captureScreenshots {
-		if sb, err := auto.CaptureScreenToBase64(screenshotQuality); err == nil {
+		if sb, err := screen.CaptureScreenToBase64(screenshotQuality); err == nil {
 			screenshotBefore = sb
 		}
 	}
@@ -349,7 +349,7 @@ func (e *Executor) executeStepWithScreenshots(
 	// 3. 执行后截图
 	var screenshotAfter string
 	if captureScreenshots {
-		if sa, err := auto.CaptureScreenToBase64(screenshotQuality); err == nil {
+		if sa, err := screen.CaptureScreenToBase64(screenshotQuality); err == nil {
 			screenshotAfter = sa
 		}
 	}

@@ -49,8 +49,8 @@ func DefaultOptions() *Options {
 	}
 }
 
-// applyOptions 应用配置选项
-func applyOptions(opts ...Option) *Options {
+// ApplyOptions 应用配置选项
+func ApplyOptions(opts ...Option) *Options {
 	o := DefaultOptions()
 	for _, opt := range opts {
 		opt(o)
@@ -100,4 +100,5 @@ func WithRegion(x, y, width, height int) Option {
 	}
 }
 
-const defaultPollInterval = 200 * time.Millisecond
+// DefaultPollInterval 默认轮询间隔
+const DefaultPollInterval = 200 * time.Millisecond

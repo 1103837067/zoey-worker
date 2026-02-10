@@ -2,37 +2,71 @@ version: '3'
 
 vars:
   APP_NAME: "ZoeyWorker"
-  APP_NAME_LOWERCASE: "zoeyworker"
-  OUTPUT_NAME: "{{.APP_NAME}}"
-  GO_BUILD_FLAGS: "-ldflags '-s -w'"
+  BIN_DIR: "bin"
+
+env:
+  CGO_ENABLED: "1"
+  CGO_CFLAGS: "-IC:/opencv-minimal/include"
+  CGO_CPPFLAGS: "-IC:/opencv-minimal/include"
+  CGO_CXXFLAGS: "-IC:/opencv-minimal/include"
+  CGO_LDFLAGS: "-LC:/opencv-minimal/x64/mingw/lib -lopencv_core4100 -lopencv_imgproc4100 -lopencv_imgcodecs4100 -lopencv_features2d4100 -lopencv_flann4100 -lopencv_calib3d4100 -lopencv_objdetect4100 -lopencv_dnn4100 -lopencv_video4100 -lopencv_photo4100 -lopencv_highgui4100 -lopencv_videoio4100"
 
 tasks:
   default:
     cmds:
       - task: build
 
+  frontend:build:
+    desc: Copy frontend files to dist
+    cmds:
+      - cmd: powershell -Command "New-Item -ItemType Directory -Path frontend/dist -Force | Out-Null; Copy-Item frontend/index.html frontend/dist/ -Force; Copy-Item frontend/app.js frontend/dist/ -Force"
+        platforms: [windows]
+      - cmd: mkdir -p frontend/dist && cp frontend/index.html frontend/dist/ && cp frontend/app.js frontend/dist/
+        platforms: [darwin, linux]
+
+  frontend:dev:
+    desc: Start frontend static file server for dev mode
+    cmds:
+      - npx -y serve frontend -l {{.WAILS_VITE_PORT | default "9245"}} --no-clipboard
+
+  copy-dlls:
+    desc: Copy required DLLs to bin directory (Windows only)
+    platforms: [windows]
+    cmds:
+      - cp /c/opencv-minimal/x64/mingw/bin/libopencv_*.dll bin/ 2>/dev/null || true
+      - cp /c/msys64/mingw64/bin/libgcc_s_seh-1.dll bin/ 2>/dev/null || true
+      - cp /c/msys64/mingw64/bin/libstdc++-6.dll bin/ 2>/dev/null || true
+      - cp /c/msys64/mingw64/bin/libwinpthread-1.dll bin/ 2>/dev/null || true
+      - cp /c/msys64/mingw64/bin/libgomp-1.dll bin/ 2>/dev/null || true
+    status:
+      - test -f bin/libgcc_s_seh-1.dll
+
   build:
     desc: Build the application
-    deps:
-      - generate-icons
     cmds:
-      - go build {{.GO_BUILD_FLAGS}} -o {{.OUTPUT_NAME}} .
+      - task: frontend:build
+      - cmd: powershell -Command "New-Item -ItemType Directory -Path '{{.BIN_DIR}}' -Force | Out-Null"
+        platforms: [windows]
+      - cmd: mkdir -p {{.BIN_DIR}}
+        platforms: [darwin, linux]
+      - cmd: go build -tags customenv -o {{.BIN_DIR}}/{{.APP_NAME}}.exe .
+        platforms: [windows]
+      - cmd: go build -tags customenv -o {{.BIN_DIR}}/{{.APP_NAME}} .
+        platforms: [darwin, linux]
+      - task: copy-dlls
 
-  build:darwin:
-    desc: Build for macOS
+  run:
+    desc: Run the application
     cmds:
-      - task: build
-      - task: package:darwin
+      - cmd: bin/{{.APP_NAME}}.exe
+        platforms: [windows]
+      - cmd: ./{{.BIN_DIR}}/{{.APP_NAME}}
+        platforms: [darwin, linux]
 
-  build:windows:
-    desc: Build for Windows
-    vars:
-      OUTPUT_NAME: "{{.APP_NAME}}.exe"
-    env:
-      GOOS: windows
-      GOARCH: amd64
+  dev:
+    desc: Run in development mode (wails3 hot reload)
     cmds:
-      - go build {{.GO_BUILD_FLAGS}} -o {{.OUTPUT_NAME}} .
+      - wails3 dev -config ./build/config.yml
 
   package:darwin:
     desc: Package macOS app bundle
@@ -41,7 +75,7 @@ tasks:
     cmds:
       - mkdir -p "{{.APP_BUNDLE}}/Contents/MacOS"
       - mkdir -p "{{.APP_BUNDLE}}/Contents/Resources"
-      - cp {{.OUTPUT_NAME}} "{{.APP_BUNDLE}}/Contents/MacOS/"
+      - cp {{.BIN_DIR}}/{{.APP_NAME}} "{{.APP_BUNDLE}}/Contents/MacOS/"
       - |
         cat > "{{.APP_BUNDLE}}/Contents/Info.plist" << 'EOF'
         <?xml version="1.0" encoding="UTF-8"?>
@@ -69,18 +103,10 @@ tasks:
         EOF
       - cp build/appicon.png "{{.APP_BUNDLE}}/Contents/Resources/iconfile.icns" 2>/dev/null || true
 
-  generate-icons:
-    desc: Generate application icons
-    cmds:
-      - echo "Icons are embedded in the binary"
-
-  dev:
-    desc: Run in development mode
-    cmds:
-      - go build -o {{.OUTPUT_NAME}} . && ./{{.OUTPUT_NAME}}
-
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -f {{.OUTPUT_NAME}} {{.APP_NAME}}.exe
-      - rm -rf build/bin
+      - cmd: powershell -Command "Remove-Item -Path '{{.BIN_DIR}}' -Recurse -Force -ErrorAction SilentlyContinue"
+        platforms: [windows]
+      - cmd: rm -rf {{.BIN_DIR}}
+        platforms: [darwin, linux]

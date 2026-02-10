@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/auto/window"
+	"github.com/zoeyai/zoeyworker/pkg/permissions"
+	"github.com/zoeyai/zoeyworker/pkg/process"
 	"github.com/zoeyai/zoeyworker/pkg/uia"
 )
 
@@ -75,7 +77,7 @@ func HandleDataRequest(requestType string, payloadJSON string) *DataResponseResu
 func handleGetApplications() *DataResponseResult {
 	log("DEBUG", "handleGetApplications called")
 
-	processes, err := auto.GetProcesses()
+	processes, err := process.GetProcesses()
 	if err != nil {
 		log("ERROR", fmt.Sprintf("GetProcesses failed: %v", err))
 		return &DataResponseResult{
@@ -97,7 +99,7 @@ func handleGetApplications() *DataResponseResult {
 	}
 
 	// 获取所有窗口（只调用一次，避免在循环中重复调用）
-	windows, windowsErr := auto.GetWindows()
+	windows, windowsErr := window.GetWindows()
 	if windowsErr != nil {
 		log("WARN", fmt.Sprintf("GetWindows failed: %v", windowsErr))
 	} else {
@@ -153,7 +155,7 @@ func handleGetApplications() *DataResponseResult {
 // handleGetWindows 处理获取窗口列表请求
 func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
 	// 检查权限
-	permStatus := auto.CheckPermissions()
+	permStatus := permissions.CheckPermissions()
 	log("DEBUG", fmt.Sprintf("Permissions: Accessibility=%v, ScreenRecording=%v", 
 		permStatus.Accessibility, permStatus.ScreenRecording))
 	
@@ -166,13 +168,13 @@ func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
 		log("DEBUG", fmt.Sprintf("Filter by process_name: %s", filter))
 	}
 
-	var windows []auto.WindowInfo
+	var windows []window.WindowInfo
 	var err error
 
 	if filter != "" {
-		windows, err = auto.GetWindows(filter)
+		windows, err = window.GetWindows(filter)
 	} else {
-		windows, err = auto.GetWindows()
+		windows, err = window.GetWindows()
 	}
 
 	log("DEBUG", fmt.Sprintf("GetWindows returned %d windows, err=%v", len(windows), err))

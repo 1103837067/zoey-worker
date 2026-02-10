@@ -6,6 +6,7 @@ require (
 	github.com/getcharzp/go-ocr v0.0.0-20260126073315-15e83dd6ccce
 	github.com/go-vgo/robotgo v1.0.0
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+	github.com/gorilla/websocket v1.5.3
 	github.com/shirou/gopsutil/v4 v4.25.10
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.64
 	gocv.io/x/gocv v0.41.0
@@ -35,7 +36,6 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/jezek/xgb v1.2.0 // indirect
