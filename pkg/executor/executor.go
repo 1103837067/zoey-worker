@@ -36,6 +36,8 @@ const (
 	TaskTypeGetClipboard = "get_clipboard"
 	TaskTypeSetClipboard = "set_clipboard"
 	TaskTypeRunPython    = "run_python"
+	// AI 动作类型（归一化坐标 + 自动截屏返回）
+	// TaskTypeAIAction 定义在 executor_ai.go 中
 	// 批量执行类型
 	TaskTypeDebugCase   = "debug_case"
 	TaskTypeExecutePlan = "execute_plan" // 执行测试计划
@@ -440,6 +442,9 @@ func (e *Executor) Execute(taskID, taskType, payloadJSON string) {
 		return
 	case TaskTypeExecuteCase:
 		e.executeExecuteCase(taskID, payload, startTime)
+		return
+	case TaskTypeAIAction:
+		e.executeAIAction(taskID, payload, startTime)
 		return
 	default:
 		// 单步任务：复用 executeSingleStep 统一分发
