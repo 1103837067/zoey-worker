@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/auto/input"
+	"github.com/zoeyai/zoeyworker/pkg/auto/screen"
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
 )
 
@@ -29,7 +30,7 @@ type AIActionResult struct {
 
 // mapNormalizedCoord 将 0-1000 归一化坐标映射到实际屏幕分辨率
 func mapNormalizedCoord(nx, ny float64) (int, int) {
-	sw, sh := auto.GetScreenSize()
+	sw, sh := screen.GetScreenSize()
 	realX := int(nx / 1000.0 * float64(sw))
 	realY := int(ny / 1000.0 * float64(sh))
 	return realX, realY
@@ -93,12 +94,12 @@ func (e *Executor) executeAIAction(taskID string, payload map[string]interface{}
 		return
 	}
 
-	screenshot, screenshotErr := auto.CaptureScreenToBase64(ap.ScreenshotQuality)
+	screenshot, screenshotErr := screen.CaptureScreenToBase64(ap.ScreenshotQuality)
 	if screenshotErr != nil {
 		log("WARN", fmt.Sprintf("[Task:%s] 截屏失败: %v", taskID, screenshotErr))
 	}
 
-	sw, sh := auto.GetScreenSize()
+	sw, sh := screen.GetScreenSize()
 	result := AIActionResult{
 		Success:      true,
 		Message:      msg,
@@ -116,23 +117,23 @@ func executeAIOperation(action string, params map[string]interface{}) (string, e
 	switch action {
 	case "click":
 		x, y := mapNormalizedCoord(getFloat(params, "x", 500), getFloat(params, "y", 500))
-		auto.MoveTo(x, y)
+		input.MoveTo(x, y)
 		time.Sleep(50 * time.Millisecond)
-		auto.Click()
+		input.Click()
 		return fmt.Sprintf("Clicked at (%d, %d)", x, y), nil
 
 	case "double_click":
 		x, y := mapNormalizedCoord(getFloat(params, "x", 500), getFloat(params, "y", 500))
-		auto.MoveTo(x, y)
+		input.MoveTo(x, y)
 		time.Sleep(50 * time.Millisecond)
-		auto.DoubleClick()
+		input.DoubleClick()
 		return fmt.Sprintf("Double clicked at (%d, %d)", x, y), nil
 
 	case "right_click":
 		x, y := mapNormalizedCoord(getFloat(params, "x", 500), getFloat(params, "y", 500))
-		auto.MoveTo(x, y)
+		input.MoveTo(x, y)
 		time.Sleep(50 * time.Millisecond)
-		auto.RightClick()
+		input.RightClick()
 		return fmt.Sprintf("Right clicked at (%d, %d)", x, y), nil
 
 	case "type":
@@ -140,7 +141,7 @@ func executeAIOperation(action string, params map[string]interface{}) (string, e
 		if text == "" {
 			return "", fmt.Errorf("缺少 text 参数")
 		}
-		auto.TypeText(text)
+		input.TypeText(text)
 		return fmt.Sprintf("Typed: %s", truncateString(text, 50)), nil
 
 	case "press":
@@ -148,7 +149,7 @@ func executeAIOperation(action string, params map[string]interface{}) (string, e
 		if len(keys) == 0 {
 			return "", fmt.Errorf("缺少 keys 参数")
 		}
-		auto.HotKey(keys...)
+		input.HotKey(keys...)
 		return fmt.Sprintf("Pressed: %v", keys), nil
 
 	case "scroll":
@@ -156,24 +157,24 @@ func executeAIOperation(action string, params map[string]interface{}) (string, e
 		if nx, ok := params["x"]; ok {
 			if ny, ok := params["y"]; ok {
 				x, y := mapNormalizedCoord(nx.(float64), ny.(float64))
-				auto.MoveTo(x, y)
+				input.MoveTo(x, y)
 				time.Sleep(50 * time.Millisecond)
 			}
 		}
-		auto.Scroll(0, amount)
+		input.Scroll(0, amount)
 		return fmt.Sprintf("Scrolled: %d", amount), nil
 
 	case "drag":
 		startX, startY := mapNormalizedCoord(getFloat(params, "start_x", 500), getFloat(params, "start_y", 500))
 		endX, endY := mapNormalizedCoord(getFloat(params, "end_x", 500), getFloat(params, "end_y", 500))
-		auto.MoveTo(startX, startY)
+		input.MoveTo(startX, startY)
 		time.Sleep(100 * time.Millisecond)
-		auto.Drag(endX, endY)
+		input.Drag(endX, endY)
 		return fmt.Sprintf("Dragged from (%d, %d) to (%d, %d)", startX, startY, endX, endY), nil
 
 	case "move":
 		x, y := mapNormalizedCoord(getFloat(params, "x", 500), getFloat(params, "y", 500))
-		auto.MoveSmooth(x, y)
+		input.MoveSmooth(x, y)
 		return fmt.Sprintf("Moved to (%d, %d)", x, y), nil
 
 	case "wait":
