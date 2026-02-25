@@ -94,7 +94,8 @@ func (e *Executor) executeAIAction(taskID string, payload map[string]interface{}
 		e.sendTaskResultWithError(taskID, taskErr, nil, startTime)
 		return
 	}
-	log("DEBUG", fmt.Sprintf("[Task:%s] 操作完成: %s, 开始截屏", taskID, msg))
+	log("DEBUG", fmt.Sprintf("[Task:%s] 操作完成: %s, 等待500ms后截屏", taskID, msg))
+	time.Sleep(500 * time.Millisecond)
 
 	screenshot, screenshotErr := screen.CaptureScreenToBase64(ap.ScreenshotQuality)
 	if screenshotErr != nil {
