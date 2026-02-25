@@ -114,6 +114,7 @@ func (e *Executor) executeAIAction(taskID string, payload map[string]interface{}
 	resultJSON, _ := json.Marshal(result)
 	log("DEBUG", fmt.Sprintf("[Task:%s] 发送结果, JSON 长度=%d", taskID, len(resultJSON)))
 	e.sendTaskResultSuccess(taskID, string(resultJSON), nil, startTime)
+	log("DEBUG", fmt.Sprintf("[Task:%s] sendTaskResultSuccess 已调用完成", taskID))
 }
 
 // executeAIOperation 根据动作类型执行对应操作

@@ -143,11 +143,11 @@ func getCoordinateScale() (float64, float64) {
 	cachedScaleY = scaleY
 	coordsDetected = true
 
-	// 只在首次探测时输出调试日志
 	debugLogOnce.Do(func() {
 		dpi := GetDPIScale()
 		rw, rh := robotgo.GetScreenSize()
-		pw, ph := GetPhysicalScreenSize()
+		pw := ScaleInt(rw, scaleX)
+		ph := ScaleInt(rh, scaleY)
 		fmt.Printf("[auto/coords] DPI=%.0f%% robotgo_screen=%dx%d physical=%dx%d coordScale=%.3f\n",
 			dpi*100, rw, rh, pw, ph, scaleX)
 	})

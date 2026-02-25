@@ -294,6 +294,8 @@ func (c *Client) doConnect() error {
 	// 创建 WebSocket 连接
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
+		WriteBufferSize:  1024 * 1024,
+		ReadBufferSize:   1024 * 1024,
 	}
 
 	conn, _, err := dialer.Dial(wsURL, nil)
@@ -415,9 +417,28 @@ func (c *Client) sendLoop() {
 			c.mu.RUnlock()
 
 			if conn != nil {
+				msgType := "unknown"
+				if msg.TaskResult != nil {
+					msgType = fmt.Sprintf("taskResult(taskId=%s)", msg.TaskResult.TaskId)
+				} else if msg.TaskAck != nil {
+					msgType = fmt.Sprintf("taskAck(taskId=%s)", msg.TaskAck.TaskId)
+				} else if msg.Heartbeat != nil {
+					msgType = "heartbeat"
+				}
+
+				if len(data) > 10000 {
+					c.log("DEBUG", fmt.Sprintf("[sendLoop] Sending large message type=%s size=%d bytes", msgType, len(data)))
+				}
+
+				conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-					c.log("ERROR", fmt.Sprintf("Failed to send message: %v", err))
+					c.log("ERROR", fmt.Sprintf("[sendLoop] Failed to send message type=%s size=%d: %v", msgType, len(data), err))
 					return
+				}
+				conn.SetWriteDeadline(time.Time{})
+
+				if len(data) > 10000 {
+					c.log("DEBUG", fmt.Sprintf("[sendLoop] Large message sent successfully type=%s size=%d bytes", msgType, len(data)))
 				}
 			}
 		}
