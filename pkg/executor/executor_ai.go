@@ -87,17 +87,20 @@ func (e *Executor) executeAIAction(taskID string, payload map[string]interface{}
 		ap.Parameters = map[string]interface{}{}
 	}
 
+	log("DEBUG", fmt.Sprintf("[Task:%s] AI action=%s, 开始执行操作", taskID, ap.Action))
 	msg, err := executeAIOperation(ap.Action, ap.Parameters)
 	if err != nil {
 		taskErr := newTaskError(pb.TaskStatus_TASK_STATUS_FAILED, pb.FailureReason_FAILURE_REASON_SYSTEM_ERROR, fmt.Sprintf("AI 动作执行失败: %v", err))
 		e.sendTaskResultWithError(taskID, taskErr, nil, startTime)
 		return
 	}
+	log("DEBUG", fmt.Sprintf("[Task:%s] 操作完成: %s, 开始截屏", taskID, msg))
 
 	screenshot, screenshotErr := screen.CaptureScreenToBase64(ap.ScreenshotQuality)
 	if screenshotErr != nil {
 		log("WARN", fmt.Sprintf("[Task:%s] 截屏失败: %v", taskID, screenshotErr))
 	}
+	log("DEBUG", fmt.Sprintf("[Task:%s] 截屏完成, base64 长度=%d", taskID, len(screenshot)))
 
 	sw, sh := screen.GetScreenSize()
 	result := AIActionResult{
@@ -109,6 +112,7 @@ func (e *Executor) executeAIAction(taskID string, payload map[string]interface{}
 	}
 
 	resultJSON, _ := json.Marshal(result)
+	log("DEBUG", fmt.Sprintf("[Task:%s] 发送结果, JSON 长度=%d", taskID, len(resultJSON)))
 	e.sendTaskResultSuccess(taskID, string(resultJSON), nil, startTime)
 }
 
