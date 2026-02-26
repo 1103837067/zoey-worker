@@ -7,10 +7,12 @@ import (
 	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/zoeyai/zoeyworker/pkg/auto/text"
 	"github.com/zoeyai/zoeyworker/pkg/config"
 	"github.com/zoeyai/zoeyworker/pkg/executor"
 	"github.com/zoeyai/zoeyworker/pkg/grpc"
 	"github.com/zoeyai/zoeyworker/pkg/permissions"
+	"github.com/zoeyai/zoeyworker/pkg/plugin"
 )
 
 // App 应用结构体（作为 Wails v3 Service）
@@ -37,6 +39,11 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 
 	// 预热系统信息（异步检测 Python 环境等耗时操作）
 	grpc.WarmupSystemInfo()
+
+	// 设置 OCR 插件
+	text.SetOCRPlugin(plugin.GetOCRPlugin())
+
+	// 调试数据通过轮询 GetDebugData 方法获取，不再使用事件
 
 	// 设置 executor 日志函数，将日志路由到 grpcClient
 	executor.SetLogFunc(func(level, message string) {
@@ -337,6 +344,41 @@ func (a *App) RefreshPythonInfo() PythonInfo {
 	}
 }
 
+// ==================== OCR 插件管理 ====================
+
+// OCRPluginStatusResult OCR 插件状态
+type OCRPluginStatusResult struct {
+	Installed bool `json:"installed"`
+}
+
+// GetOCRPluginStatus 获取 OCR 插件状态
+func (a *App) GetOCRPluginStatus() OCRPluginStatusResult {
+	p := plugin.GetOCRPlugin()
+	return OCRPluginStatusResult{
+		Installed: p.IsInstalled(),
+	}
+}
+
+// InstallOCRPlugin 安装 OCR 插件
+func (a *App) InstallOCRPlugin() error {
+	p := plugin.GetOCRPlugin()
+
+	// 设置进度回调
+	p.SetProgressCallback(func(progress float64) {
+		// Wails v3 暂时不使用事件系统，简化处理
+		fmt.Printf("OCR Install progress: %.0f%%\n", progress*100)
+	})
+
+	// 开始安装
+	return p.Install()
+}
+
+// UninstallOCRPlugin 卸载 OCR 插件
+func (a *App) UninstallOCRPlugin() error {
+	p := plugin.GetOCRPlugin()
+	return p.Uninstall()
+}
+
 // ==================== 窗口控制 ====================
 
 // ShowWindow 显示窗口
@@ -361,4 +403,57 @@ func (a *App) QuitApp() {
 	}
 }
 
+// ==================== 调试功能 ====================
+
+// DebugData 调试数据（返回给前端）
+type DebugData struct {
+	TaskID         string  `json:"task_id"`
+	ActionType     string  `json:"action_type"`
+	Status         string  `json:"status"`
+	TemplateBase64 string  `json:"template_base64"`
+	ScreenBase64   string  `json:"screen_base64"`
+	Matched        bool    `json:"matched"`
+	Confidence     float64 `json:"confidence"`
+	X              int     `json:"x"`
+	Y              int     `json:"y"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
+	DurationMs     int64   `json:"duration_ms"`
+	Error          string  `json:"error"`
+	Timestamp      int64   `json:"timestamp"`
+	Version        int64   `json:"version"`
+}
+
+// GetDebugData 获取最新的调试数据（供前端轮询）
+func (a *App) GetDebugData(lastVersion int64) *DebugData {
+	currentVersion := executor.GetDebugDataVersion()
+	
+	// 如果版本号没变，返回 nil 表示没有新数据
+	if currentVersion <= lastVersion {
+		return nil
+	}
+	
+	data := executor.GetLatestDebugData()
+	if data == nil {
+		return nil
+	}
+	
+	return &DebugData{
+		TaskID:         data.TaskID,
+		ActionType:     data.ActionType,
+		Status:         data.Status,
+		TemplateBase64: data.TemplateBase64,
+		ScreenBase64:   data.ScreenBase64,
+		Matched:        data.Matched,
+		Confidence:     data.Confidence,
+		X:              data.X,
+		Y:              data.Y,
+		Width:          data.Width,
+		Height:         data.Height,
+		DurationMs:     data.Duration,
+		Error:          data.Error,
+		Timestamp:      data.Timestamp,
+		Version:        currentVersion,
+	}
+}
 

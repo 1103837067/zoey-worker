@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"image/png"
 	"os"
@@ -13,17 +14,116 @@ import (
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 	"github.com/zoeyai/zoeyworker/pkg/auto/grid"
+	autoimage "github.com/zoeyai/zoeyworker/pkg/auto/image"
 	"github.com/zoeyai/zoeyworker/pkg/auto/input"
 	"github.com/zoeyai/zoeyworker/pkg/auto/screen"
+	"github.com/zoeyai/zoeyworker/pkg/auto/text"
 	"github.com/zoeyai/zoeyworker/pkg/auto/window"
 	"github.com/zoeyai/zoeyworker/pkg/cmdutil"
+	"github.com/zoeyai/zoeyworker/pkg/plugin"
 	"github.com/zoeyai/zoeyworker/pkg/process"
 	"github.com/zoeyai/zoeyworker/pkg/python"
+	"github.com/zoeyai/zoeyworker/pkg/vision/ocr"
 )
 
-var errFeatureRemoved = fmt.Errorf("该功能已移除，请使用 AI 任务")
-
 // ==================== 单步操作实现 ====================
+
+// executeClickImage 执行点击图像
+func (e *Executor) executeClickImage(payload map[string]interface{}) (interface{}, error) {
+	imagePath, ok := payload["image"].(string)
+	if !ok || imagePath == "" {
+		return nil, fmt.Errorf("缺少 image 参数")
+	}
+
+	// 检查是否有网格参数
+	gridStr, _ := payload["grid"].(string)
+
+	opts := e.parseAutoOptions(payload)
+
+	// 获取任务 ID（用于调试）
+	taskID, _ := payload["task_id"].(string)
+	startTime := time.Now()
+
+	// 发送调试数据的辅助函数
+	sendDebugData := func(status string, matched bool, confidence float64, x, y int, errMsg string) {
+		// 截取当前屏幕
+		screenBase64 := ""
+		if screenImg, err := screen.CaptureScreen(); err == nil {
+			var buf bytes.Buffer
+			if png.Encode(&buf, screenImg) == nil {
+				screenBase64 = "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+			}
+		}
+
+		emitDebugMatch(DebugMatchData{
+			TaskID:         taskID,
+			ActionType:     "click_image",
+			Status:         status,
+			TemplateBase64: imagePath,
+			ScreenBase64:   screenBase64,
+			Matched:        matched,
+			Confidence:     confidence,
+			X:              x,
+			Y:              y,
+			Duration:       time.Since(startTime).Milliseconds(),
+			Error:          errMsg,
+		})
+	}
+
+	// 🔴 立即发送调试数据：开始搜索
+	sendDebugData("searching", false, 0, 0, 0, "")
+
+	if gridStr != "" {
+		// 使用网格点击
+		err := autoimage.ClickImageWithGrid(imagePath, gridStr, opts...)
+		if err != nil {
+			sendDebugData("not_found", false, 0, 0, 0, err.Error())
+			return nil, err
+		}
+		x, y := input.GetMousePosition()
+		sendDebugData("found", true, 1.0, x, y, "")
+		return map[string]interface{}{"clicked": true, "grid": gridStr}, nil
+	}
+
+	// 普通点击
+	err := autoimage.ClickImage(imagePath, opts...)
+	if err != nil {
+		sendDebugData("not_found", false, 0, 0, 0, err.Error())
+		return nil, err
+	}
+
+	x, y := input.GetMousePosition()
+	sendDebugData("found", true, 1.0, x, y, "")
+	return map[string]bool{"clicked": true}, nil
+}
+
+// isOCRAvailable 检查 OCR 功能是否可用（插件安装或默认配置可用）
+func isOCRAvailable() bool {
+	if plugin.GetOCRPlugin().IsInstalled() {
+		return true
+	}
+	return ocr.IsAvailable()
+}
+
+// executeClickText 执行点击文字
+func (e *Executor) executeClickText(payload map[string]interface{}) (interface{}, error) {
+	if !isOCRAvailable() {
+		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
+	}
+
+	textStr, ok := payload["text"].(string)
+	if !ok || textStr == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	err := text.ClickText(textStr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]bool{"clicked": true}, nil
+}
 
 // executeTypeText 执行输入文字
 func (e *Executor) executeTypeText(payload map[string]interface{}) (interface{}, error) {
@@ -38,6 +138,7 @@ func (e *Executor) executeTypeText(payload map[string]interface{}) (interface{},
 
 // executeKeyPress 执行按键
 func (e *Executor) executeKeyPress(payload map[string]interface{}) (interface{}, error) {
+	// 新格式：keys 数组 (如 ["Ctrl", "C"] 或 ["Enter"])
 	if keysRaw, ok := payload["keys"].([]interface{}); ok && len(keysRaw) > 0 {
 		var keys []string
 		for _, k := range keysRaw {
@@ -61,6 +162,7 @@ func (e *Executor) executeKeyPress(payload map[string]interface{}) (interface{},
 		return map[string]interface{}{"pressed": true, "keys": keys}, nil
 	}
 
+	// 旧格式兼容：key + modifiers
 	key, ok := payload["key"].(string)
 	if !ok || key == "" {
 		return nil, fmt.Errorf("缺少 key 参数")
@@ -105,6 +207,50 @@ func (e *Executor) executeScreenshot(payload map[string]interface{}) (interface{
 	return map[string]interface{}{
 		"width":  bounds.Dx(),
 		"height": bounds.Dy(),
+	}, nil
+}
+
+// executeWaitImage 执行等待图像
+func (e *Executor) executeWaitImage(payload map[string]interface{}) (interface{}, error) {
+	imagePath, ok := payload["image"].(string)
+	if !ok || imagePath == "" {
+		return nil, fmt.Errorf("缺少 image 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	pos, err := autoimage.WaitForImage(imagePath, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"found": true,
+		"x":     pos.X,
+		"y":     pos.Y,
+	}, nil
+}
+
+// executeWaitText 执行等待文字
+func (e *Executor) executeWaitText(payload map[string]interface{}) (interface{}, error) {
+	if !isOCRAvailable() {
+		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
+	}
+
+	textStr, ok := payload["text"].(string)
+	if !ok || textStr == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	pos, err := text.WaitForText(textStr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"found": true,
+		"x":     pos.X,
+		"y":     pos.Y,
 	}, nil
 }
 
@@ -154,6 +300,7 @@ func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface
 	log("DEBUG", fmt.Sprintf("executeActivateApp: app_name='%s', window_title='%s'", appName, windowTitle))
 
 	if appName != "" && windowTitle != "" {
+		log("DEBUG", fmt.Sprintf("Using ActivateWindowByTitle('%s', '%s')", appName, windowTitle))
 		err := window.ActivateWindowByTitle(appName, windowTitle)
 		if err != nil {
 			return nil, err
@@ -162,6 +309,7 @@ func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface
 	}
 
 	if appName != "" {
+		log("DEBUG", fmt.Sprintf("Using ActivateWindow('%s')", appName))
 		err := window.ActivateWindow(appName)
 		if err != nil {
 			return nil, err
@@ -170,6 +318,7 @@ func (e *Executor) executeActivateApp(payload map[string]interface{}) (interface
 	}
 
 	if windowTitle != "" {
+		log("DEBUG", fmt.Sprintf("Using ActivateWindow by title: '%s'", windowTitle))
 		err := window.ActivateWindow(windowTitle)
 		if err != nil {
 			return nil, err
@@ -205,6 +354,32 @@ func (e *Executor) executeGridClick(payload map[string]interface{}) (interface{}
 	}
 
 	return map[string]bool{"clicked": true}, nil
+}
+
+// executeImageExists 执行检查图像存在
+func (e *Executor) executeImageExists(payload map[string]interface{}) (interface{}, error) {
+	imagePath, ok := payload["image"].(string)
+	if !ok || imagePath == "" {
+		return nil, fmt.Errorf("缺少 image 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	exists := autoimage.ImageExists(imagePath, opts...)
+
+	return map[string]bool{"exists": exists}, nil
+}
+
+// executeTextExists 执行检查文字存在
+func (e *Executor) executeTextExists(payload map[string]interface{}) (interface{}, error) {
+	textStr, ok := payload["text"].(string)
+	if !ok || textStr == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	exists := text.TextExists(textStr, opts...)
+
+	return map[string]bool{"exists": exists}, nil
 }
 
 // executeGetClipboard 执行获取剪贴板
@@ -276,6 +451,40 @@ func (e *Executor) executeCloseApp(payload map[string]interface{}) (interface{},
 	}
 
 	return nil, fmt.Errorf("未找到进程: %s", appName)
+}
+
+// executeAssertImage 执行图像断言
+func (e *Executor) executeAssertImage(payload map[string]interface{}) (interface{}, error) {
+	imagePath, ok := payload["image"].(string)
+	if !ok || imagePath == "" {
+		return nil, fmt.Errorf("缺少 image 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	exists := autoimage.ImageExists(imagePath, opts...)
+
+	if !exists {
+		return nil, fmt.Errorf("断言失败: 未找到指定图像")
+	}
+
+	return map[string]bool{"asserted": true, "exists": true}, nil
+}
+
+// executeAssertText 执行文字断言
+func (e *Executor) executeAssertText(payload map[string]interface{}) (interface{}, error) {
+	textStr, ok := payload["text"].(string)
+	if !ok || textStr == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+	exists := text.TextExists(textStr, opts...)
+
+	if !exists {
+		return nil, fmt.Errorf("断言失败: 未找到指定文字 '%s'", textStr)
+	}
+
+	return map[string]bool{"asserted": true, "exists": true}, nil
 }
 
 // executeRunPython 执行 Python 代码
@@ -351,9 +560,10 @@ func (e *Executor) executeRunPython(payload map[string]interface{}) (interface{}
 // executeSingleStep 执行单个步骤
 func (e *Executor) executeSingleStep(taskType string, payload map[string]interface{}) (interface{}, error) {
 	switch taskType {
-	case TaskTypeClickImage, TaskTypeClickText, TaskTypeWaitImage, TaskTypeWaitText,
-		TaskTypeImageExists, TaskTypeTextExists, TaskTypeAssertImage, TaskTypeAssertText:
-		return nil, errFeatureRemoved
+	case TaskTypeClickImage:
+		return e.executeClickImage(payload)
+	case TaskTypeClickText:
+		return e.executeClickText(payload)
 	case TaskTypeClickNative:
 		return e.executeClickNative(payload)
 	case TaskTypeTypeText:
@@ -362,6 +572,10 @@ func (e *Executor) executeSingleStep(taskType string, payload map[string]interfa
 		return e.executeKeyPress(payload)
 	case TaskTypeScreenshot:
 		return e.executeScreenshot(payload)
+	case TaskTypeWaitImage:
+		return e.executeWaitImage(payload)
+	case TaskTypeWaitText:
+		return e.executeWaitText(payload)
 	case TaskTypeWaitTime:
 		return e.executeWaitTime(payload)
 	case TaskTypeMouseMove:
@@ -374,6 +588,14 @@ func (e *Executor) executeSingleStep(taskType string, payload map[string]interfa
 		return e.executeCloseApp(payload)
 	case TaskTypeGridClick:
 		return e.executeGridClick(payload)
+	case TaskTypeImageExists:
+		return e.executeImageExists(payload)
+	case TaskTypeTextExists:
+		return e.executeTextExists(payload)
+	case TaskTypeAssertImage:
+		return e.executeAssertImage(payload)
+	case TaskTypeAssertText:
+		return e.executeAssertText(payload)
 	case TaskTypeGetClipboard:
 		return e.executeGetClipboard(payload)
 	case TaskTypeSetClipboard:
@@ -399,6 +621,10 @@ func (e *Executor) executeSingleStepV2(taskType string, payload map[string]inter
 	var err error
 
 	switch taskType {
+	case TaskTypeClickImage:
+		data, err = e.executeClickImageV2(payload, result)
+	case TaskTypeClickText:
+		data, err = e.executeClickTextV2(payload, result)
 	case TaskTypeMouseClick:
 		data, err = e.executeMouseClickV2(payload, result)
 	case TaskTypeGridClick:
@@ -420,6 +646,44 @@ func (e *Executor) executeSingleStepV2(taskType string, payload map[string]inter
 }
 
 // ==================== V2 增强版操作 ====================
+
+func (e *Executor) executeClickImageV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
+	data, err := e.executeClickImage(payload)
+
+	if err == nil {
+		x, y := input.GetMousePosition()
+		result.ClickPosition = &PositionInfo{X: x, Y: y}
+	}
+
+	return data, err
+}
+
+func (e *Executor) executeClickTextV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
+	if !isOCRAvailable() {
+		return nil, fmt.Errorf("OCR 功能未安装，请在客户端设置中下载安装 OCR 支持")
+	}
+
+	textStr, ok := payload["text"].(string)
+	if !ok || textStr == "" {
+		return nil, fmt.Errorf("缺少 text 参数")
+	}
+
+	opts := e.parseAutoOptions(payload)
+
+	pos, err := text.WaitForText(textStr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	result.ClickPosition = &PositionInfo{X: pos.X, Y: pos.Y}
+
+	err = text.ClickText(textStr, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]bool{"clicked": true}, nil
+}
 
 func (e *Executor) executeMouseClickV2(payload map[string]interface{}, result *ActionResult) (interface{}, error) {
 	x, xOk := payload["x"].(float64)
