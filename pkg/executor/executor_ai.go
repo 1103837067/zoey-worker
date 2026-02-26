@@ -33,10 +33,9 @@ type AIActionResult struct {
 var screenW, screenH int
 
 func captureScreenBase64(quality int) (string, int, int, error) {
-	logicW, logicH := robotgo.GetScreenSize()
-	img, err := robotgo.CaptureImg(0, 0, logicW, logicH)
+	img, err := captureScreenWithCursor()
 	if err != nil {
-		return "", 0, 0, fmt.Errorf("截屏失败: %w", err)
+		return "", 0, 0, err
 	}
 
 	bounds := img.Bounds()
@@ -220,9 +219,7 @@ func executeAIOperation(action string, params map[string]interface{}, strategy s
 			sx, sy = getCoord(map[string]interface{}{"x": getFloat(params, "start_x", 500), "y": getFloat(params, "start_y", 500)}, strategy)
 			ex, ey = getCoord(map[string]interface{}{"x": getFloat(params, "end_x", 500), "y": getFloat(params, "end_y", 500)}, strategy)
 		}
-		setCursorPos(sx, sy)
-		time.Sleep(100 * time.Millisecond)
-		robotgo.DragSmooth(ex, ey)
+		dragSmooth(sx, sy, ex, ey)
 		return fmt.Sprintf("Dragged (%d,%d)->(%d,%d)", sx, sy, ex, ey), nil
 
 	case "move":
