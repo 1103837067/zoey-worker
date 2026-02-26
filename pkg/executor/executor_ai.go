@@ -33,6 +33,7 @@ func mapNormalizedCoord(nx, ny float64) (int, int) {
 	sw, sh := screen.GetScreenSize()
 	realX := int(nx / 1000.0 * float64(sw))
 	realY := int(ny / 1000.0 * float64(sh))
+	log("DEBUG", fmt.Sprintf("[坐标] 归一化(%.0f,%.0f) -> 物理(%d,%d) 屏幕=%dx%d", nx, ny, realX, realY, sw, sh))
 	return realX, realY
 }
 
@@ -101,9 +102,8 @@ func (e *Executor) executeAIAction(taskID string, payload map[string]interface{}
 	if screenshotErr != nil {
 		log("WARN", fmt.Sprintf("[Task:%s] 截屏失败: %v", taskID, screenshotErr))
 	}
-	log("DEBUG", fmt.Sprintf("[Task:%s] 截屏完成, base64 长度=%d", taskID, len(screenshot)))
-
 	sw, sh := screen.GetScreenSize()
+	log("DEBUG", fmt.Sprintf("[Task:%s] 截屏完成, base64长度=%d, 屏幕尺寸=%dx%d", taskID, len(screenshot), sw, sh))
 	result := AIActionResult{
 		Success:      true,
 		Message:      msg,
