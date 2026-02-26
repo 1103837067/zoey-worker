@@ -18,10 +18,12 @@ var (
 	captureSizeMu              sync.RWMutex
 )
 
-// CaptureScreen 截取全屏（物理像素），缓存尺寸用于坐标映射
-// 与 demo 一致：无参 CaptureImg() 返回物理像素，与 robotgo.Move() 坐标系一致
+// CaptureScreen 截取主显示器全屏，缓存实际像素尺寸用于坐标映射
+// robotgo.GetScreenSize() 返回主显示器逻辑尺寸，CaptureImg(0,0,w,h) 只截主显示器。
+// Bounds() 返回截图的实际物理像素尺寸，作为坐标映射基准。
 func CaptureScreen() (image.Image, error) {
-	img, err := robotgo.CaptureImg()
+	w, h := robotgo.GetScreenSize()
+	img, err := robotgo.CaptureImg(0, 0, w, h)
 	if err != nil {
 		return nil, fmt.Errorf("截屏失败: %w", err)
 	}
