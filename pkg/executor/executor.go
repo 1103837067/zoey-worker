@@ -46,59 +46,6 @@ const (
 
 // ==================== 类型定义 ====================
 
-// 使用 pb 包中的枚举类型
-// TaskStatus: pb.TaskStatus_TASK_STATUS_SUCCESS, etc.
-// FailureReason: pb.FailureReason_FAILURE_REASON_NOT_FOUND, etc.
-
-// DebugMatchData 调试匹配数据（用于发送到前端调试面板）
-type DebugMatchData struct {
-	TaskID         string  `json:"task_id"`
-	ActionType     string  `json:"action_type"`
-	Status         string  `json:"status"`          // searching, found, not_found, error
-	TemplateBase64 string  `json:"template_base64"` // 目标图片 base64
-	ScreenBase64   string  `json:"screen_base64"`   // 截图 base64
-	Matched        bool    `json:"matched"`
-	Confidence     float64 `json:"confidence"`
-	X              int     `json:"x"`
-	Y              int     `json:"y"`
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	Duration       int64   `json:"duration_ms"`
-	Error          string  `json:"error,omitempty"`
-	Timestamp      int64   `json:"timestamp"` // 时间戳，用于前端判断是否有新数据
-}
-
-// 调试数据存储
-var (
-	latestDebugData  *DebugMatchData
-	debugDataMutex   sync.RWMutex
-	debugDataVersion int64 // 版本号，每次更新时递增
-)
-
-// GetLatestDebugData 获取最新的调试数据（供前端轮询）
-func GetLatestDebugData() *DebugMatchData {
-	debugDataMutex.RLock()
-	defer debugDataMutex.RUnlock()
-	return latestDebugData
-}
-
-// GetDebugDataVersion 获取调试数据版本号
-func GetDebugDataVersion() int64 {
-	debugDataMutex.RLock()
-	defer debugDataMutex.RUnlock()
-	return debugDataVersion
-}
-
-// emitDebugMatch 保存调试匹配数据（供前端轮询获取）
-func emitDebugMatch(data DebugMatchData) {
-	debugDataMutex.Lock()
-	defer debugDataMutex.Unlock()
-
-	data.Timestamp = time.Now().UnixMilli()
-	debugDataVersion++
-	latestDebugData = &data
-}
-
 // TaskError 任务错误
 type TaskError struct {
 	Status  pb.TaskStatus
