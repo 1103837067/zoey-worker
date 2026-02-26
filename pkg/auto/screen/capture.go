@@ -6,12 +6,21 @@ import (
 	"image"
 
 	"github.com/go-vgo/robotgo"
-
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 )
 
-// CaptureScreen 截取全屏
+// CaptureScreen 截取主显示器全屏
+// 使用 robotgo.GetScreenSize() 获取主显示器尺寸，指定区域截图避免多显示器黑边
 func CaptureScreen() (image.Image, error) {
+	w, h := robotgo.GetScreenSize()
+	if w > 0 && h > 0 {
+		img, err := robotgo.CaptureImg(0, 0, w, h)
+		if err != nil {
+			return nil, fmt.Errorf("截屏失败: %w", err)
+		}
+		return img, nil
+	}
+
 	img, err := robotgo.CaptureImg()
 	if err != nil {
 		return nil, fmt.Errorf("截屏失败: %w", err)
