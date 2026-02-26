@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 
-	"github.com/go-vgo/robotgo"
 	"gocv.io/x/gocv"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
@@ -25,10 +24,9 @@ func CaptureForMatch(o *auto.Options) (gocv.Mat, CaptureMeta, error) {
 	var err error
 
 	if o.Region != nil {
-		inputX, inputY, inputW, inputH := auto.NormalizeRegionForInput(o.Region.X, o.Region.Y, o.Region.Width, o.Region.Height)
-		img, err = robotgo.CaptureImg(inputX, inputY, inputW, inputH)
+		img, err = CaptureRegion(o.Region.X, o.Region.Y, o.Region.Width, o.Region.Height)
 	} else {
-		img, err = robotgo.CaptureImg()
+		img, err = CaptureScreen()
 	}
 
 	if err != nil {
