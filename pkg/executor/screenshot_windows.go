@@ -8,27 +8,32 @@ import (
 )
 
 var (
-	gdi32              = syscall.NewLazyDLL("gdi32.dll")
-	procCreateCompatDC = gdi32.NewProc("CreateCompatibleDC")
-	procCreateCompatBM = gdi32.NewProc("CreateCompatibleBitmap")
-	procSelectObject   = gdi32.NewProc("SelectObject")
-	procBitBlt         = gdi32.NewProc("BitBlt")
-	procDeleteObject   = gdi32.NewProc("DeleteObject")
-	procDeleteDC       = gdi32.NewProc("DeleteDC")
-	procGetDIBits      = gdi32.NewProc("GetDIBits")
+	scrUser32            = syscall.NewLazyDLL("user32.dll")
+	gdi32                = syscall.NewLazyDLL("gdi32.dll")
+	procCreateCompatDC   = gdi32.NewProc("CreateCompatibleDC")
+	procCreateCompatBM   = gdi32.NewProc("CreateCompatibleBitmap")
+	procSelectObject     = gdi32.NewProc("SelectObject")
+	procBitBlt           = gdi32.NewProc("BitBlt")
+	procDeleteObject     = gdi32.NewProc("DeleteObject")
+	procDeleteDC         = gdi32.NewProc("DeleteDC")
+	procGetDIBits        = gdi32.NewProc("GetDIBits")
 
-	procGetDC      = user32.NewProc("GetDC")
-	procReleaseDC  = user32.NewProc("ReleaseDC")
-	procGetCursorInfo = user32.NewProc("GetCursorInfo")
-	procDrawIconEx    = user32.NewProc("DrawIconEx")
+	procGetDC            = scrUser32.NewProc("GetDC")
+	procReleaseDC        = scrUser32.NewProc("ReleaseDC")
+	procGetCursorInfo    = scrUser32.NewProc("GetCursorInfo")
+	procDrawIconEx       = scrUser32.NewProc("DrawIconEx")
+	procGetSystemMetrics = scrUser32.NewProc("GetSystemMetrics")
+	procGetIconInfo      = scrUser32.NewProc("GetIconInfo")
 )
 
 const (
-	srccopy        = 0x00CC0020
-	dibRgbColors   = 0
-	biRgb          = 0
-	cursorShowing  = 0x00000001
-	diFormal       = 0x0003
+	srccopy       = 0x00CC0020
+	dibRgbColors  = 0
+	biRgb         = 0
+	cursorShowing = 0x00000001
+	diFormal      = 0x0003
+	smCxscreen    = 0
+	smCyscreen    = 1
 )
 
 type bitmapInfoHeader struct {
@@ -67,8 +72,6 @@ type iconInfo struct {
 	hbmMask  uintptr
 	hbmColor uintptr
 }
-
-var procGetIconInfo = user32.NewProc("GetIconInfo")
 
 func captureScreenWithCursor() (image.Image, error) {
 	sw, _, _ := procGetSystemMetrics.Call(smCxscreen)

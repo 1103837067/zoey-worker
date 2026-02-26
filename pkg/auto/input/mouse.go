@@ -5,18 +5,18 @@ import (
 	"github.com/go-vgo/robotgo"
 
 	"github.com/zoeyai/zoeyworker/pkg/auto"
+	"github.com/zoeyai/zoeyworker/pkg/winapi"
 )
 
 // MoveTo 移动鼠标到指定位置
 func MoveTo(x, y int) {
 	inputX, inputY := auto.NormalizePointForInput(x, y)
-	robotgo.Move(inputX, inputY)
+	winapi.SetCursorPos(inputX, inputY)
 }
 
-// MoveSmooth 平滑移动鼠标
+// MoveSmooth 平滑移动鼠标（同 MoveTo，使用原生 API）
 func MoveSmooth(x, y int) {
-	inputX, inputY := auto.NormalizePointForInput(x, y)
-	robotgo.MoveSmooth(inputX, inputY)
+	MoveTo(x, y)
 }
 
 // Click 点击
@@ -57,10 +57,11 @@ func ScrollDown(lines int) {
 	robotgo.ScrollDir(lines, "down")
 }
 
-// Drag 拖拽
+// Drag 拖拽到指定位置（从当前位置拖到 x,y）
 func Drag(x, y int) {
+	fromX, fromY := robotgo.Location()
 	inputX, inputY := auto.NormalizePointForInput(x, y)
-	robotgo.DragSmooth(inputX, inputY)
+	winapi.DragSmooth(fromX, fromY, inputX, inputY)
 }
 
 // GetMousePosition 获取鼠标位置
