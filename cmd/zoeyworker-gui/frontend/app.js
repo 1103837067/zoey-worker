@@ -58,13 +58,9 @@ const App = {
   ResetPermissions: () => callBackend(`${SERVICE}.ResetPermissions`),
   GetPythonInfo: () => callBackend(`${SERVICE}.GetPythonInfo`),
   RefreshPythonInfo: () => callBackend(`${SERVICE}.RefreshPythonInfo`),
-  GetOCRPluginStatus: () => callBackend(`${SERVICE}.GetOCRPluginStatus`),
-  InstallOCRPlugin: () => callBackend(`${SERVICE}.InstallOCRPlugin`),
-  UninstallOCRPlugin: () => callBackend(`${SERVICE}.UninstallOCRPlugin`),
   ShowWindow: () => callBackend(`${SERVICE}.ShowWindow`),
   HideWindow: () => callBackend(`${SERVICE}.HideWindow`),
   QuitApp: () => callBackend(`${SERVICE}.QuitApp`),
-  GetDebugData: (lastVersion) => callBackend(`${SERVICE}.GetDebugData`, lastVersion),
 }
 
 // ========== DOM 元素 ==========
@@ -568,7 +564,7 @@ function showPermissionModal() {
                 ${state.permissions.screen_recording ? '已授权' : '未授权'}
               </span>
             </div>
-            <p class="text-sm ${state.permissions.screen_recording ? 'text-emerald-700' : 'text-red-700'} mt-1">用于截图和图像识别匹配</p>
+            <p class="text-sm ${state.permissions.screen_recording ? 'text-emerald-700' : 'text-red-700'} mt-1">用于截图和屏幕分析</p>
             ${!state.permissions.screen_recording ? `
               <button onclick="openScreenRecordingFromModal()" class="mt-2 text-sm font-medium text-red-700 hover:text-red-800 flex items-center gap-1">
                 <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
@@ -872,165 +868,6 @@ function showBackgroundNotification() {
   }, 3000)
 }
 
-// ========== 调试面板 ==========
-const debugState = {
-  history: [], // 匹配历史记录
-  maxHistory: 20,
-  lastVersion: 0, // 上次获取的数据版本
-  pollInterval: null // 轮询定时器
-}
-
-// 设置调试数据轮询（类似日志的方式）
-function setupDebugPolling() {
-  // 每 500ms 轮询一次调试数据
-  debugState.pollInterval = setInterval(async () => {
-    try {
-      const data = await App.GetDebugData(debugState.lastVersion)
-      if (data && data.version > debugState.lastVersion) {
-        console.log('收到新的调试数据:', data)
-        debugState.lastVersion = data.version
-        updateDebugPanel(data)
-      }
-    } catch (e) {
-      // 忽略错误，继续轮询
-    }
-  }, 500)
-  
-  console.log('调试数据轮询已启动')
-  
-  // 绑定清空历史按钮
-  const clearBtn = document.getElementById('clearDebugHistoryBtn')
-  if (clearBtn) {
-    clearBtn.onclick = () => {
-      debugState.history = []
-      updateDebugHistory()
-    }
-  }
-}
-
-// 停止调试轮询
-function stopDebugPolling() {
-  if (debugState.pollInterval) {
-    clearInterval(debugState.pollInterval)
-    debugState.pollInterval = null
-  }
-}
-
-// 更新调试面板
-function updateDebugPanel(data) {
-  console.log('更新调试面板:', data)
-  
-  // 更新状态（根据 status 字段）
-  const statusEl = document.getElementById('debugStatus')
-  if (statusEl) {
-    const statusMap = {
-      'searching': { color: 'yellow', text: '搜索中...' },
-      'found': { color: 'green', text: '匹配成功' },
-      'not_found': { color: 'red', text: '未找到' },
-      'error': { color: 'red', text: '错误' }
-    }
-    const status = statusMap[data.status] || statusMap['searching']
-    statusEl.innerHTML = `<span class="w-2 h-2 bg-${status.color}-500 rounded-full animate-pulse"></span><span class="text-${status.color}-600">${status.text}</span>`
-  }
-  
-  // 更新信息
-  const taskIdEl = document.getElementById('debugTaskId')
-  const actionTypeEl = document.getElementById('debugActionType')
-  const matchResultEl = document.getElementById('debugMatchResult')
-  const confidenceEl = document.getElementById('debugConfidence')
-  const positionEl = document.getElementById('debugPosition')
-  const durationEl = document.getElementById('debugDuration')
-  
-  if (taskIdEl) taskIdEl.textContent = data.task_id || '-'
-  if (actionTypeEl) actionTypeEl.textContent = data.action_type || '-'
-  if (matchResultEl) matchResultEl.textContent = data.status === 'searching' ? '搜索中' : (data.matched ? '成功' : '失败')
-  if (confidenceEl) confidenceEl.textContent = data.confidence ? `${(data.confidence * 100).toFixed(1)}%` : '-'
-  if (positionEl) positionEl.textContent = data.matched ? `(${data.x}, ${data.y})` : '-'
-  if (durationEl) durationEl.textContent = data.duration_ms ? `${data.duration_ms}ms` : '-'
-  
-  // 更新目标图片（支持 data:image/png;base64,... 格式或纯 base64）
-  const templateImg = document.getElementById('debugTemplateImg')
-  const templateEmpty = document.getElementById('debugTemplateEmpty')
-  if (data.template_base64 && templateImg && templateEmpty) {
-    // 如果已经是 data: URL 格式，直接使用；否则添加前缀
-    templateImg.src = data.template_base64.startsWith('data:') 
-      ? data.template_base64 
-      : `data:image/png;base64,${data.template_base64}`
-    templateImg.classList.remove('hidden')
-    templateEmpty.classList.add('hidden')
-  } else if (templateImg && templateEmpty) {
-    templateImg.classList.add('hidden')
-    templateEmpty.classList.remove('hidden')
-  }
-  
-  // 更新截图（支持 data:image/png;base64,... 格式或纯 base64）
-  const screenImg = document.getElementById('debugScreenshotImg')
-  const screenEmpty = document.getElementById('debugScreenshotEmpty')
-  if (data.screen_base64 && screenImg && screenEmpty) {
-    // 如果已经是 data: URL 格式，直接使用；否则添加前缀
-    screenImg.src = data.screen_base64.startsWith('data:') 
-      ? data.screen_base64 
-      : `data:image/png;base64,${data.screen_base64}`
-    screenImg.classList.remove('hidden')
-    screenEmpty.classList.add('hidden')
-  } else if (screenImg && screenEmpty) {
-    screenImg.classList.add('hidden')
-    screenEmpty.classList.remove('hidden')
-  }
-  
-  // 显示错误信息
-  if (data.error) {
-    console.error('匹配错误:', data.error)
-  }
-  
-  // 只在最终状态时添加到历史记录（不是 searching）
-  if (data.status !== 'searching') {
-    debugState.history.unshift({
-      ...data,
-      timestamp: new Date().toLocaleTimeString()
-    })
-    if (debugState.history.length > debugState.maxHistory) {
-      debugState.history.pop()
-    }
-    updateDebugHistory()
-  }
-}
-
-// 更新调试历史列表
-function updateDebugHistory() {
-  const listEl = document.getElementById('debugHistoryList')
-  const emptyEl = document.getElementById('debugHistoryEmpty')
-  
-  if (debugState.history.length === 0) {
-    emptyEl.classList.remove('hidden')
-    listEl.innerHTML = ''
-    listEl.appendChild(emptyEl)
-    return
-  }
-  
-  emptyEl.classList.add('hidden')
-  listEl.innerHTML = debugState.history.map((item, idx) => `
-    <div class="flex items-center justify-between px-3 py-2 hover:bg-muted/50 cursor-pointer border-b last:border-0 text-xs" onclick="selectDebugHistory(${idx})">
-      <div class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full ${item.matched ? 'bg-green-500' : 'bg-red-500'}"></span>
-        <span class="font-medium">${item.action_type || '未知'}</span>
-      </div>
-      <div class="flex items-center gap-3 text-muted-foreground">
-        <span>${item.confidence ? (item.confidence * 100).toFixed(0) + '%' : '-'}</span>
-        <span>${item.duration_ms || 0}ms</span>
-        <span>${item.timestamp}</span>
-      </div>
-    </div>
-  `).join('')
-}
-
-// 选择历史记录项
-window.selectDebugHistory = function(idx) {
-  const item = debugState.history[idx]
-  if (item) {
-    updateDebugPanel(item)
-  }
-}
 
 // ========== Python 环境检测 ==========
 
@@ -1099,142 +936,17 @@ function bindPythonEvents() {
   }
 }
 
-// ========== OCR 模块管理 ==========
-
-// 检查 OCR 状态
-async function checkOCRStatus() {
-  try {
-    const status = await App.GetOCRPluginStatus()
-    updateOCRUI(status.installed)
-    return status.installed
-  } catch (e) {
-    console.error('检查 OCR 状态失败:', e)
-    return false
-  }
-}
-
-// 更新 OCR UI
-function updateOCRUI(installed) {
-  const ocrStatus = $('ocrStatus')
-  const installBtn = $('installOCRBtn')
-  const progressDiv = $('ocrInstallProgress')
-  
-  if (installed) {
-    ocrStatus.innerHTML = `
-      <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-      <span class="text-sm text-emerald-600">已加载</span>
-    `
-    installBtn?.classList.add('hidden')
-  } else {
-    ocrStatus.innerHTML = `
-      <span class="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
-      <span class="text-sm text-amber-600">未安装</span>
-    `
-    installBtn?.classList.remove('hidden')
-  }
-  
-  progressDiv?.classList.add('hidden')
-  lucide.createIcons()
-}
-
-// 安装 OCR 模型
-async function installOCR() {
-  const installBtn = $('installOCRBtn')
-  const progressDiv = $('ocrInstallProgress')
-  const progressBar = $('ocrProgressBar')
-  const progressText = $('ocrProgressText')
-  
-  // 显示进度条
-  installBtn?.classList.add('hidden')
-  progressDiv?.classList.remove('hidden')
-  
-  // 模拟进度（因为后端目前没有实时进度回调）
-  let progress = 0
-  const progressInterval = setInterval(() => {
-    if (progress < 90) {
-      progress += Math.random() * 10
-      if (progress > 90) progress = 90
-      progressBar.style.width = `${progress}%`
-      progressText.textContent = `${Math.round(progress)}%`
-    }
-  }, 500)
-  
-  try {
-    await App.InstallOCRPlugin()
-    
-    // 完成
-    clearInterval(progressInterval)
-    progressBar.style.width = '100%'
-    progressText.textContent = '100%'
-    
-    setTimeout(async () => {
-      await checkOCRStatus()
-      showOCRSuccessToast()
-    }, 500)
-  } catch (e) {
-    clearInterval(progressInterval)
-    console.error('安装 OCR 失败:', e)
-    
-    progressDiv?.classList.add('hidden')
-    installBtn?.classList.remove('hidden')
-    
-    alert('安装 OCR 模型失败: ' + e.message)
-  }
-}
-
-// 显示 OCR 安装成功提示
-function showOCRSuccessToast() {
-  const toast = document.createElement('div')
-  toast.className = 'fixed bottom-4 right-4 bg-emerald-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-slide-up'
-  toast.innerHTML = `
-    <i data-lucide="check-circle" class="w-5 h-5"></i>
-    <span>OCR 模型安装成功！</span>
-  `
-  document.body.appendChild(toast)
-  lucide.createIcons()
-  
-  setTimeout(() => toast.remove(), 3000)
-}
-
-// 绑定 OCR 事件
-function bindOCREvents() {
-  const refreshBtn = $('refreshOCRBtn')
-  const installBtn = $('installOCRBtn')
-  
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', async () => {
-      refreshBtn.disabled = true
-      refreshBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>'
-      lucide.createIcons()
-      
-      await checkOCRStatus()
-      
-      refreshBtn.disabled = false
-      refreshBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>'
-      lucide.createIcons()
-    })
-  }
-  
-  if (installBtn) {
-    installBtn.addEventListener('click', installOCR)
-  }
-}
 
 // ========== 启动 ==========
 document.addEventListener('DOMContentLoaded', async () => {
   init()
   bindPermissionEvents()
   bindPythonEvents()
-  bindOCREvents()
   setupBackgroundEvents()
-  setupDebugPolling() // 使用轮询方式获取调试数据
   
   // 检查权限并在需要时显示引导弹窗
   await checkPermissions(true)
   
   // 检查 Python 环境（使用启动时预热的缓存）
   await checkPythonInfo()
-  
-  // 检查 OCR 状态
-  await checkOCRStatus()
 })
