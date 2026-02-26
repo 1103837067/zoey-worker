@@ -161,9 +161,9 @@ func detectCoordinateScale() (float64, float64) {
 		return 1.0, 1.0
 	}
 
-	img, err := robotgo.CaptureImg()
+	// 必须指定主显示器区域，无参 CaptureImg() 多显示器会截所有屏幕
+	img, err := robotgo.CaptureImg(0, 0, reportedW, reportedH)
 	if err != nil || img == nil {
-		// 截图失败，用 DPI scale 兜底
 		s := GetDPIScale()
 		return s, s
 	}
