@@ -4,27 +4,33 @@ package screen
 import (
 	"fmt"
 	"image"
+	"sync"
 
 	"github.com/go-vgo/robotgo"
 	"github.com/zoeyai/zoeyworker/pkg/auto"
 )
 
-// CaptureScreen 截取主显示器全屏
-// 使用 robotgo.GetScreenSize() 获取主显示器尺寸，指定区域截图避免多显示器黑边
-func CaptureScreen() (image.Image, error) {
-	w, h := robotgo.GetScreenSize()
-	if w > 0 && h > 0 {
-		img, err := robotgo.CaptureImg(0, 0, w, h)
-		if err != nil {
-			return nil, fmt.Errorf("截屏失败: %w", err)
-		}
-		return img, nil
-	}
+// 最近一次截图的实际像素尺寸
+// robotgo.Move() 使用的坐标系与 CaptureImg() 返回的像素尺寸一致，
+// 因此归一化坐标应基于截图尺寸映射，无需考虑 DPI 缩放。
+var (
+	lastCaptureW, lastCaptureH int
+	captureSizeMu              sync.RWMutex
+)
 
+// CaptureScreen 截取全屏（物理像素）
+func CaptureScreen() (image.Image, error) {
 	img, err := robotgo.CaptureImg()
 	if err != nil {
 		return nil, fmt.Errorf("截屏失败: %w", err)
 	}
+
+	bounds := img.Bounds()
+	captureSizeMu.Lock()
+	lastCaptureW = bounds.Dx()
+	lastCaptureH = bounds.Dy()
+	captureSizeMu.Unlock()
+
 	return img, nil
 }
 
@@ -38,8 +44,14 @@ func CaptureRegion(x, y, width, height int) (image.Image, error) {
 	return img, nil
 }
 
-// GetScreenSize 获取屏幕尺寸（物理像素，与截图分辨率一致）
+// GetScreenSize 返回截图的实际像素尺寸（与 robotgo.Move 坐标系一致）
 func GetScreenSize() (width, height int) {
+	captureSizeMu.RLock()
+	w, h := lastCaptureW, lastCaptureH
+	captureSizeMu.RUnlock()
+	if w > 0 && h > 0 {
+		return w, h
+	}
 	return auto.GetPhysicalScreenSize()
 }
 
