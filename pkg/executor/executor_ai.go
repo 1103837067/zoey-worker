@@ -235,9 +235,9 @@ func executeAIOperation(action string, params map[string]interface{}, strategy s
 	case "screenshot":
 		return "Screenshot captured", nil
 
-	case "task_complete":
+	case "task_complete", "task_end":
 		result, _ := params["result"].(string)
-		return fmt.Sprintf("Task completed: %s", result), nil
+		return fmt.Sprintf("Task ended: %s", result), nil
 
 	default:
 		return "", fmt.Errorf("未知动作: %s", action)
