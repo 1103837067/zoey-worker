@@ -11,166 +11,6 @@ import (
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
 )
 
-// ==================== WebSocket 消息类型 ====================
-
-// WsConnectMessage 认证消息
-type WsConnectMessage struct {
-	Type       string          `json:"type"`
-	AccessKey  string          `json:"accessKey"`
-	SecretKey  string          `json:"secretKey"`
-	SystemInfo *WsSystemInfo   `json:"systemInfo,omitempty"`
-}
-
-// WsSystemInfo 系统信息（JSON）
-type WsSystemInfo struct {
-	Hostname     string          `json:"hostname,omitempty"`
-	Platform     string          `json:"platform,omitempty"`
-	OsVersion    string          `json:"osVersion,omitempty"`
-	AgentVersion string          `json:"agentVersion,omitempty"`
-	IpAddress    string          `json:"ipAddress,omitempty"`
-	Capabilities *WsCapabilities `json:"capabilities,omitempty"`
-}
-
-// WsCapabilities 能力信息
-type WsCapabilities struct {
-	PythonAvailable bool   `json:"pythonAvailable"`
-	PythonVersion   string `json:"pythonVersion,omitempty"`
-	PythonPath      string `json:"pythonPath,omitempty"`
-}
-
-// WsConnectResponse 认证响应
-type WsConnectResponse struct {
-	Type      string `json:"type"`
-	Success   bool   `json:"success"`
-	Message   string `json:"message"`
-	AgentId   string `json:"agentId"`
-	AgentName string `json:"agentName"`
-}
-
-// WsServerMessage 服务端消息
-type WsServerMessage struct {
-	MessageId   string              `json:"messageId"`
-	Timestamp   int64               `json:"timestamp"`
-	ExecuteTask *WsExecuteTask      `json:"executeTask,omitempty"`
-	CancelTask  *WsCancelTask       `json:"cancelTask,omitempty"`
-	Ping        *WsPing             `json:"ping,omitempty"`
-	DataRequest *WsDataRequest      `json:"dataRequest,omitempty"`
-}
-
-// WsExecuteTask 执行任务命令
-type WsExecuteTask struct {
-	TaskId      string `json:"taskId"`
-	TaskType    string `json:"taskType"`
-	PayloadJson string `json:"payloadJson"`
-}
-
-// WsCancelTask 取消任务命令
-type WsCancelTask struct {
-	TaskId string `json:"taskId"`
-	Reason string `json:"reason"`
-}
-
-// WsPing Ping 命令
-type WsPing struct {
-	Timestamp int64 `json:"timestamp"`
-}
-
-// WsDataRequest 数据查询请求
-type WsDataRequest struct {
-	RequestType string `json:"requestType"`
-	PayloadJson string `json:"payloadJson"`
-}
-
-// WsWorkerMessage Worker 消息
-type WsWorkerMessage struct {
-	MessageId    string              `json:"messageId"`
-	Timestamp    int64               `json:"timestamp"`
-	AgentId      string              `json:"agentId,omitempty"`
-	TaskAck      *WsTaskAck          `json:"taskAck,omitempty"`
-	TaskProgress *WsTaskProgress     `json:"taskProgress,omitempty"`
-	TaskResult   *WsTaskResult       `json:"taskResult,omitempty"`
-	Pong         *WsPong             `json:"pong,omitempty"`
-	DataResponse *WsDataResponse     `json:"dataResponse,omitempty"`
-	Heartbeat    *WsHeartbeat        `json:"heartbeat,omitempty"`
-}
-
-// WsTaskAck 任务确认
-type WsTaskAck struct {
-	TaskId   string `json:"taskId"`
-	Accepted bool   `json:"accepted"`
-	Message  string `json:"message"`
-}
-
-// WsTaskProgress 任务进度
-type WsTaskProgress struct {
-	TaskId          string `json:"taskId"`
-	TotalSteps      int32  `json:"totalSteps"`
-	CompletedSteps  int32  `json:"completedSteps"`
-	PassedSteps     int32  `json:"passedSteps"`
-	FailedSteps     int32  `json:"failedSteps"`
-	CurrentStepName string `json:"currentStepName"`
-	Status          string `json:"status"`
-}
-
-// WsTaskResult 任务结果
-type WsTaskResult struct {
-	TaskId        string           `json:"taskId"`
-	Success       bool             `json:"success"`
-	Status        int32            `json:"status"`
-	Message       string           `json:"message"`
-	ResultJson    string           `json:"resultJson"`
-	DurationMs    int64            `json:"durationMs"`
-	FailureReason int32            `json:"failureReason,omitempty"`
-	MatchLocation *WsMatchLocation `json:"matchLocation,omitempty"`
-}
-
-// WsMatchLocation 匹配位置
-type WsMatchLocation struct {
-	X          int32   `json:"x"`
-	Y          int32   `json:"y"`
-	Width      int32   `json:"width"`
-	Height     int32   `json:"height"`
-	Confidence float32 `json:"confidence"`
-}
-
-// WsPong Pong 响应
-type WsPong struct {
-	ClientTimestamp int64 `json:"clientTimestamp"`
-	ServerTimestamp int64 `json:"serverTimestamp"`
-}
-
-// WsDataResponse 数据响应
-type WsDataResponse struct {
-	RequestType string `json:"requestType"`
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	PayloadJson string `json:"payloadJson"`
-}
-
-// WsHeartbeat 心跳消息
-type WsHeartbeat struct {
-	ResourceInfo *WsResourceInfo `json:"resourceInfo,omitempty"`
-	AgentStatus  *WsAgentStatus  `json:"agentStatus,omitempty"`
-}
-
-// WsResourceInfo 资源信息
-type WsResourceInfo struct {
-	CpuUsage    float32 `json:"cpuUsage"`
-	MemoryUsage float32 `json:"memoryUsage"`
-	DiskUsage   float32 `json:"diskUsage"`
-}
-
-// WsAgentStatus Agent 状态
-type WsAgentStatus struct {
-	Status            string `json:"status"`
-	CurrentTaskId     string `json:"currentTaskId,omitempty"`
-	CurrentTaskType   string `json:"currentTaskType,omitempty"`
-	TaskStartedAt     int64  `json:"taskStartedAt,omitempty"`
-	RunningTasksCount int32  `json:"runningTasksCount"`
-}
-
-// ==================== Client ====================
-
 // Client WebSocket 客户端
 type Client struct {
 	config *ClientConfig
@@ -182,6 +22,7 @@ type Client struct {
 
 	outgoing chan *WsWorkerMessage
 	stopCh   chan struct{}
+	stopOnce sync.Once
 	wg       sync.WaitGroup
 
 	onStatusChange   StatusCallback
@@ -378,7 +219,11 @@ func (c *Client) doConnect() error {
 	c.agentName = resp.AgentName
 	c.isConnected = true
 	c.stopCh = make(chan struct{})
-	c.outgoing = make(chan *WsWorkerMessage, 100)
+	c.stopOnce = sync.Once{}
+	// 复用 outgoing channel，避免重连时丢失未发送的任务结果
+	if c.outgoing == nil {
+		c.outgoing = make(chan *WsWorkerMessage, 100)
+	}
 	c.wg = sync.WaitGroup{} // 重置 WaitGroup，避免旧的计数器干扰
 	c.mu.Unlock()
 
@@ -416,30 +261,50 @@ func (c *Client) sendLoop() {
 			conn := c.conn
 			c.mu.RUnlock()
 
-			if conn != nil {
-				msgType := "unknown"
-				if msg.TaskResult != nil {
-					msgType = fmt.Sprintf("taskResult(taskId=%s)", msg.TaskResult.TaskId)
-				} else if msg.TaskAck != nil {
-					msgType = fmt.Sprintf("taskAck(taskId=%s)", msg.TaskAck.TaskId)
-				} else if msg.Heartbeat != nil {
-					msgType = "heartbeat"
+			if conn == nil {
+				// 连接不可用，将任务结果放回 channel 等重连后发送，心跳直接丢弃
+				if msg.TaskResult != nil || msg.TaskAck != nil || msg.TaskProgress != nil {
+					select {
+					case c.outgoing <- msg:
+						c.log("WARN", "[sendLoop] Connection unavailable, re-queued task message")
+					default:
+						c.log("ERROR", "[sendLoop] Connection unavailable and queue full, task message lost")
+					}
 				}
+				return
+			}
 
-				if len(data) > 10000 {
-					c.log("DEBUG", fmt.Sprintf("[sendLoop] Sending large message type=%s size=%d bytes", msgType, len(data)))
-				}
+			msgType := "unknown"
+			if msg.TaskResult != nil {
+				msgType = fmt.Sprintf("taskResult(taskId=%s)", msg.TaskResult.TaskId)
+			} else if msg.TaskAck != nil {
+				msgType = fmt.Sprintf("taskAck(taskId=%s)", msg.TaskAck.TaskId)
+			} else if msg.Heartbeat != nil {
+				msgType = "heartbeat"
+			}
 
-				conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-					c.log("ERROR", fmt.Sprintf("[sendLoop] Failed to send message type=%s size=%d: %v", msgType, len(data), err))
-					return
-				}
-				conn.SetWriteDeadline(time.Time{})
+			if len(data) > 10000 {
+				c.log("DEBUG", fmt.Sprintf("[sendLoop] Sending large message type=%s size=%d bytes", msgType, len(data)))
+			}
 
-				if len(data) > 10000 {
-					c.log("DEBUG", fmt.Sprintf("[sendLoop] Large message sent successfully type=%s size=%d bytes", msgType, len(data)))
+			conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				c.log("ERROR", fmt.Sprintf("[sendLoop] Failed to send message type=%s size=%d: %v", msgType, len(data), err))
+				// 写入失败，将任务相关消息放回 channel 等重连后发送
+				if msg.TaskResult != nil || msg.TaskAck != nil || msg.TaskProgress != nil {
+					select {
+					case c.outgoing <- msg:
+						c.log("WARN", "[sendLoop] Write failed, re-queued task message")
+					default:
+						c.log("ERROR", "[sendLoop] Write failed and queue full, task message lost")
+					}
 				}
+				return
+			}
+			conn.SetWriteDeadline(time.Time{})
+
+			if len(data) > 10000 {
+				c.log("DEBUG", fmt.Sprintf("[sendLoop] Large message sent successfully type=%s size=%d bytes", msgType, len(data)))
 			}
 		}
 	}
@@ -643,6 +508,13 @@ func (c *Client) sendMessage(msg *WsWorkerMessage) {
 	}
 }
 
+// closeStopCh 安全关闭停止信号（防止 double close panic）
+func (c *Client) closeStopCh() {
+	c.stopOnce.Do(func() {
+		close(c.stopCh)
+	})
+}
+
 // Disconnect 断开连接
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
@@ -653,8 +525,7 @@ func (c *Client) Disconnect() error {
 	c.isConnected = false
 	c.mu.Unlock()
 
-	// 发送停止信号
-	close(c.stopCh)
+	c.closeStopCh()
 
 	// 先关闭 WebSocket 连接，使阻塞的 ReadMessage 立即返回错误
 	// 这样 receiveLoop 才能退出，wg.Wait 才不会死锁
@@ -692,12 +563,7 @@ func (c *Client) attemptReconnect() {
 	c.isConnected = false
 
 	// 关闭旧的停止信号，让 sendLoop/heartbeatLoop 退出
-	select {
-	case <-c.stopCh:
-		// 已经关闭了
-	default:
-		close(c.stopCh)
-	}
+	c.closeStopCh()
 
 	// 关闭旧连接
 	if c.conn != nil {

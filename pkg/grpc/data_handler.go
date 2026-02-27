@@ -224,9 +224,18 @@ func handleGetWindows(payload map[string]interface{}) *DataResponseResult {
 		output = append(output, w)
 	}
 
-	data, _ := json.Marshal(map[string]interface{}{
+	data, err := json.Marshal(map[string]interface{}{
 		"windows": output,
 	})
+	if err != nil {
+		log("ERROR", fmt.Sprintf("JSON marshal windows failed: %v", err))
+		return &DataResponseResult{
+			RequestType: RequestTypeGetWindows,
+			Success:     false,
+			Message:     fmt.Sprintf("JSON序列化失败: %v", err),
+			PayloadJSON: `{"windows":[]}`,
+		}
+	}
 
 	return &DataResponseResult{
 		RequestType: RequestTypeGetWindows,
@@ -323,9 +332,18 @@ func handleGetElements(payload map[string]interface{}) *DataResponseResult {
 		output[i].Rect.Height = elem.Rect.Height
 	}
 
-	data, _ := json.Marshal(map[string]interface{}{
+	data, err := json.Marshal(map[string]interface{}{
 		"elements": output,
 	})
+	if err != nil {
+		log("ERROR", fmt.Sprintf("JSON marshal elements failed: %v", err))
+		return &DataResponseResult{
+			RequestType: RequestTypeGetElements,
+			Success:     false,
+			Message:     fmt.Sprintf("JSON序列化失败: %v", err),
+			PayloadJSON: `{"elements":[]}`,
+		}
+	}
 
 	return &DataResponseResult{
 		RequestType: RequestTypeGetElements,
