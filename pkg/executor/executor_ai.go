@@ -6,11 +6,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/jpeg"
+	"strings"
 	"time"
 
 	"github.com/go-vgo/robotgo"
 	pb "github.com/zoeyai/zoeyworker/pkg/grpc/pb"
 )
+
+// normalizeKeyName 规范化键名为 robotgo 期望的格式（robotgo 对大小写敏感）
+func normalizeKeyName(key string) string {
+	// 统一转换为小写
+	key = strings.ToLower(key)
+
+	// 常见别名映射
+	switch key {
+	case "control":
+		return "ctrl"
+	case "cmd", "command", "win", "meta":
+		return "command"
+	case "esc":
+		return "escape"
+	}
+
+	return key
+}
 
 const TaskTypeAIAction = "ai_action"
 
@@ -194,14 +213,21 @@ func executeAIOperation(action string, params map[string]interface{}, strategy s
 		if len(keys) == 0 {
 			return "", fmt.Errorf("缺少 keys 参数")
 		}
+		// 规范化所有键名为小写（robotgo 对大小写敏感）
+		for i, k := range keys {
+			keys[i] = normalizeKeyName(k)
+		}
 		if len(keys) == 1 {
 			robotgo.KeyTap(keys[0])
 		} else {
-			args := make([]interface{}, len(keys)-1)
-			for i, k := range keys[1:] {
+			// 最后一个键是主键，前面的都是修饰键
+			mainKey := keys[len(keys)-1]
+			modifiers := keys[:len(keys)-1]
+			args := make([]interface{}, len(modifiers))
+			for i, k := range modifiers {
 				args[i] = k
 			}
-			robotgo.KeyTap(keys[0], args...)
+			robotgo.KeyTap(mainKey, args...)
 		}
 		return fmt.Sprintf("Pressed: %v", keys), nil
 
